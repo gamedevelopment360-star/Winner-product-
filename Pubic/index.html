@@ -23,6 +23,7 @@
   .pf input{width:64px;padding:6px;font-size:14px}
   .pf button{padding:6px 10px;font-size:13px}
   .res{font-size:13px;margin-top:6px;line-height:1.5;width:100%}
+  .chip{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:20px;background:#1a1d24;border:1px solid #333;color:#eee;font-size:14px;font-weight:400}
   .good{color:#2ecc71}.bad{color:#e74c3c}
 </style>
 </head>
@@ -33,6 +34,7 @@
   <input id="q" placeholder="or search a keyword" enterkeyhint="search">
   <button id="go">Search</button>
 </div>
+<div id="recent" style="padding:0 16px 8px"></div>
 <div id="status"></div>
 <div class="grid" id="out"></div>
 
@@ -51,7 +53,7 @@ function render(j, label) {
     const cls = p.score >= 70 ? 'hi' : p.score >= 45 ? 'mid' : 'lo';
     const img = /^https?:\/\//.test(p.image || '') ? esc(p.image) : '';
     return `<div class="card">
-      <img src="${img}" alt="" loading="lazy">
+      <img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer">
       <div>
         <div class="name">${esc(p.name)}</div>
         <div class="meta">Cost $${esc(p.cost)} &middot; Sell ~$${esc(p.suggestedPrice)}</div>
@@ -84,8 +86,27 @@ async function load(url, label, msg) {
 
 function search() {
   const q = $('q').value.trim();
-  if (q) load('/api/research?q=' + encodeURIComponent(q), 'products', 'Searching CJ...');
+  if (q) {
+    load('/api/research?q=' + encodeURIComponent(q), 'products', 'Searching CJ...').then(loadRecent);
+  }
 }
+async function loadRecent() {
+  try {
+    const r = await fetch('/api/searches?limit=15');
+    const j = await r.json();
+    const list = j.results || [];
+    $('recent').innerHTML = list.length
+      ? '<div class="meta" style="margin-bottom:6px">Recent searches:</div>' +
+        list.map((s) => '<button class="chip" data-q="' + esc(s.query) + '">' + esc(s.query) + '</button>').join('')
+      : '';
+  } catch (e) { /* ignore */ }
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.classList.contains('chip')) return;
+  $('q').value = e.target.dataset.q;
+  search();
+});
+loadRecent();
 function winners() {
   load('/api/research/winners', 'winners', 'Scanning niches... this takes about 15 seconds the first time');
 }
