@@ -1,5 +1,5 @@
-// research.js — product research for AI Store Builder (CJ Dropshipping data).
-// Routes (login is already enforced in server.js; these also need the user's CJ key):
+// research.js — product research for Winner Finder (CJ Dropshipping data).
+// Routes (the password gate is in server.js; these use the CJ_API_KEY from the server):
 //   GET /api/research?q=keyword      search CJ, score each product
 //   GET /api/research/winners        scan several niches, best score first
 //   GET /api/saved                   products saved in the database
@@ -22,6 +22,7 @@ const COUNTRY = (process.env.RESEARCH_COUNTRY || 'US').toUpperCase();
 const FEE_PCT = 2.9;      // payment fee percent, plus the fixed part below
 const FEE_FIXED = 0.30;
 const EST_SHIPPING = 4;   // rough shipping guess used only for the list score
+const MIN_PROFIT = parseFloat(process.env.MIN_PROFIT) || 7; // list score drops if profit before ads is below this ($)
 
 const NICHES = [
   'pet grooming', 'kitchen gadget', 'car organizer', 'massage', 'phone holder',
@@ -32,19 +33,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- tiny CJ client (token cached per key) ----------
 const tokens = new Map();
+const tokenLogins = new Map(); // logins in progress, so parallel requests share ONE login (CJ limits logins)
 async function token(key) {
   const c = tokens.get(key);
   if (c && c.exp > Date.now()) return c.token;
-  const r = await fetch(BASE + '/authentication/getAccessToken', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ apiKey: key })
-  });
-  const j = await r.json().catch(() => ({}));
-  const t = j && j.data && j.data.accessToken;
-  if (!t) throw new Error((j && j.message) || 'CJ login failed (wait 5 minutes and retry)');
-  tokens.set(key, { token: t, exp: Date.now() + 10 * 24 * 3600 * 1000 });
-  return t;
+  if (tokenLogins.has(key)) return tokenLogins.get(key);
+  const login = (async () => {
+    const r = await fetch(BASE + '/authentication/getAccessToken', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: key }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const j = await r.json().catch(() => ({}));
+    const t = j && j.data && j.data.accessToken;
+    if (!t) throw new Error((j && j.message) || 'CJ login failed (wait 5 minutes and retry)');
+    tokens.set(key, { token: t, exp: Date.now() + 10 * 24 * 3600 * 1000 });
+    return t;
+  })().finally(() => tokenLogins.delete(key));
+  tokenLogins.set(key, login);
+  return login;
 }
 
 async function cjCall(key, path, opts) {
@@ -53,7 +61,8 @@ async function cjCall(key, path, opts) {
   const r = await fetch(BASE + path, {
     method: opts.body ? 'POST' : 'GET',
     headers: { 'CJ-Access-Token': t, 'Content-Type': 'application/json' },
-    body: opts.body ? JSON.stringify(opts.body) : undefined
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    signal: AbortSignal.timeout(25000)
   });
   const j = await r.json().catch(() => ({}));
   if (j && j.result === false) throw new Error(j.message || 'CJ request failed');
@@ -74,6 +83,7 @@ function suggestPrice(cost) {
 }
 
 // 0-100. Points: margin 35, price band 15, stock 15, competition 20, delivery 15.
+// Cheaper products (selling price $20-$60) score best. Products with too little profit are pushed down.
 function scoreProduct(p) {
   const sell = p.suggestedPrice;
   const feeAmt = sell * FEE_PCT / 100 + FEE_FIXED;
@@ -81,13 +91,15 @@ function scoreProduct(p) {
   const marginBeforeAds = before / sell;                 // ads still to come off
   let s = 0;
   s += clamp((marginBeforeAds - 0.2) / 0.4, 0, 1) * 35;  // 20% -> 0 pts, 60% -> 35 pts
-  s += (sell >= 20 && sell <= 60) ? 15 : (sell >= 15 ? 7 : 0);
+  s += (sell >= 20 && sell <= 60) ? 15 : sell < 20 ? (sell >= 15 ? 7 : 0) : sell <= 90 ? 6 : 0;
   const stock = p.stock;
   s += stock == null ? 5 : clamp(stock / 1000, 0, 1) * 15;
   const sellers = p.listedBySellers;
   s += sellers == null ? 8 : sellers < 50 ? 20 : sellers < 200 ? 14 : sellers < 500 ? 8 : 3;
   const d = p.deliveryDays;
   s += d == null ? 6 : d <= 8 ? 15 : d <= 12 ? 10 : d <= 16 ? 4 : 0;
+  if (before < MIN_PROFIT) s *= 0.6;                     // not enough money left per sale
+  if (sell > 90) s *= 0.75;                              // costly items sell less and risk more
   return Math.round(clamp(s, 0, 100));
 }
 
@@ -152,26 +164,37 @@ module.exports = function (app) {
     }
   });
 
+  const scansRunning = new Map(); // cj key -> scan in progress, so taps in a row do not start many scans
+
+  async function scanWinners(key) {
+    const seen = new Set();
+    const all = [];
+    for (const n of NICHES) {
+      try {
+        const found = await searchKeyword(key, n, 20);
+        found.forEach((p) => { if (!seen.has(p.pid)) { seen.add(p.pid); all.push(p); } });
+      } catch (e) {
+        console.error('niche failed:', n, e.message || e);
+      }
+      await sleep(1100); // stay under CJ's request rate limit
+    }
+    all.sort((a, b) => b.score - a.score);
+    db.saveProducts(all, 'winners scan').catch((e) => console.error('save failed:', e.message || e));
+    const results = all.slice(0, 20).map(publicFields);
+    if (results.length) winnersCache.set(key, { at: Date.now(), results });
+    return results;
+  }
+
   app.get('/api/research/winners', requireCjKey, async (req, res) => {
     const hit = winnersCache.get(req.cjKey);
     if (hit && Date.now() - hit.at < 6 * 3600 * 1000) return res.json({ results: hit.results });
     try {
-      const seen = new Set();
-      let all = [];
-      for (const n of NICHES) {
-        try {
-          const found = await searchKeyword(req.cjKey, n, 20);
-          found.forEach((p) => { if (!seen.has(p.pid)) { seen.add(p.pid); all.push(p); } });
-        } catch (e) {
-          console.error('niche failed:', n, e.message || e);
-        }
-        await sleep(1100); // stay under CJ's request rate limit
+      let run = scansRunning.get(req.cjKey);
+      if (!run) {
+        run = scanWinners(req.cjKey).finally(() => scansRunning.delete(req.cjKey));
+        scansRunning.set(req.cjKey, run);
       }
-      all.sort((a, b) => b.score - a.score);
-      db.saveProducts(all, 'winners scan').catch((e) => console.error('save failed:', e.message || e));
-      const results = all.slice(0, 20).map(publicFields);
-      if (results.length) winnersCache.set(req.cjKey, { at: Date.now(), results });
-      res.json({ results });
+      res.json({ results: await run });
     } catch (e) {
       console.error('winners scan failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Scan failed' });
