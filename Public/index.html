@@ -1,171 +1,229 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Product Research</title>
-<style>
-  *{box-sizing:border-box}
-  body{margin:0;font-family:system-ui,sans-serif;background:#0f1115;color:#eee}
-  header{padding:16px;font-size:20px;font-weight:700}
-  .bar{display:flex;gap:8px;padding:0 16px 12px}
-  input{flex:1;padding:12px;border-radius:10px;border:1px solid #333;background:#1a1d24;color:#eee;font-size:16px}
-  button{padding:12px 16px;border:0;border-radius:10px;background:#2ecc71;color:#000;font-weight:700;font-size:16px}
-  #status{padding:0 16px 8px;color:#9aa}
-  .grid{display:grid;gap:12px;padding:0 16px 24px}
-  .card{display:flex;gap:12px;background:#1a1d24;border-radius:12px;padding:10px}
-  .card img{width:96px;height:96px;object-fit:cover;border-radius:8px;background:#222}
-  .name{font-size:14px;line-height:1.3;margin-bottom:6px}
-  .meta{font-size:13px;color:#aab}
-  .score{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:700;font-size:13px;color:#000}
-  .hi{background:#2ecc71}.mid{background:#f1c40f}.lo{background:#e67e22}
-  .season{display:inline-block;padding:2px 8px;border-radius:20px;font-weight:700;font-size:12px;margin-left:6px}
-  .season-peak{background:#2ecc71;color:#000}.season-soon{background:#f1c40f;color:#000}
-  .season-off{background:#555;color:#eee}
-  .season-btn{flex:none;background:#1a1d24;border:1px solid #333;color:#eee;font-weight:400;font-size:14px;padding:10px 14px}
-  .pf{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-  .pf input{width:64px;padding:6px;font-size:14px}
-  .pf button{padding:6px 10px;font-size:13px}
-  .res{font-size:13px;margin-top:6px;line-height:1.5;width:100%}
-  .chip{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:20px;background:#1a1d24;border:1px solid #333;color:#eee;font-size:14px;font-weight:400}
-  .good{color:#2ecc71}.bad{color:#e74c3c}
-</style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Store Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+  rel="stylesheet"
+/>
+<link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<header>Winning Products</header>
-<div class="bar"><button id="win" style="flex:1">Find winners automatically</button></div>
-<div class="bar" style="flex-wrap:wrap">
-  <button class="season-btn" data-season="summer">Summer</button>
-  <button class="season-btn" data-season="winter">Winter</button>
-  <button class="season-btn" data-season="christmas">Christmas</button>
-  <button class="season-btn" data-season="halloween">Halloween</button>
-  <button class="season-btn" data-season="valentine">Valentine's</button>
-  <button class="season-btn" data-season="backtoschool">Back to School</button>
-</div>
-<div class="bar">
-  <input id="q" placeholder="or search a keyword" enterkeyhint="search">
-  <button id="go">Search</button>
-</div>
-<div id="recent" style="padding:0 16px 8px"></div>
-<div id="status"></div>
-<div class="grid" id="out"></div>
 
-<script>
-const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
-  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+<div class="layout">
 
-function seasonBadge(label) {
-  if (!label) return '';
-  const cls = label.includes('Peak') ? 'season-peak' : label.includes('coming') || label.includes('approaching') ? 'season-soon' : 'season-off';
-  return `<span class="season ${cls}">${esc(label)}</span>`;
-}
+  <!-- Control rail -->
+  <aside class="rail">
+    <div>
+      <a href="/dashboard" class="back-btn" style="display:inline-flex;align-items:center;gap:8px;margin-bottom:20px;padding:10px 16px;border:1px solid rgba(255,255,255,0.25);border-radius:10px;color:inherit;text-decoration:none;font-weight:500;font-size:15px;">&larr; Back to dashboard</a>
+      <p class="eyebrow">Store builder</p>
+      <h1 class="headline">Describe what you sell.<br />See a storefront take shape.</h1>
+    </div>
 
-function render(j, label) {
-  if (!j.results || !j.results.length) {
-    $('status').textContent = 'No products found. Try again or another keyword.';
-    return;
-  }
-  $('status').textContent = j.results.length + ' ' + label + ', best first';
-  $('out').innerHTML = j.results.map((p) => {
-    const cls = p.score >= 70 ? 'hi' : p.score >= 45 ? 'mid' : 'lo';
-    const img = /^https?:\/\//.test(p.image || '') ? esc(p.image) : '';
-    return `<div class="card">
-      <img src="${img}" alt="" loading="lazy" referrerpolicy="no-referrer">
-      <div>
-        <div class="name">${esc(p.name)}</div>
-        <div class="meta">Cost $${esc(p.cost)} &middot; Sell ~$${esc(p.suggestedPrice)}</div>
-        <div class="meta">${esc(p.category || '')}</div>
-        <div class="meta">Listed by ${esc(p.listedBySellers)} sellers</div>
-        <span class="score ${cls}">Score ${esc(p.score)}</span>${seasonBadge(p.seasonLabel)}
-        <div class="pf" data-pid="${esc(p.pid)}">
-          Sell $<input type="number" step="0.01" class="sell" value="${esc(p.suggestedPrice)}">
-          Ads $<input type="number" step="0.01" class="ad" value="8">
-          <button class="calc">Real profit</button>
-          <div class="res"></div>
+    <form id="builder-form" class="fields">
+      <label class="field">
+        <span>Product or niche</span>
+        <input type="text" id="product" placeholder="e.g. minimalist ceramic planters" />
+      </label>
+
+      <label class="field">
+        <span>Or paste a CJ Dropshipping product link</span>
+        <input type="text" id="ali-link" placeholder="https://cjdropshipping.com/product/..." />
+      </label>
+
+      <label class="field">
+        <span>Store name (optional)</span>
+        <input type="text" id="store-name-input" placeholder="Leave blank to let AI name it" />
+      </label>
+
+      <label class="field">
+        <span>Who it's for (optional)</span>
+        <input type="text" id="audience" placeholder="e.g. renters with small apartments" />
+      </label>
+
+      <div class="field">
+        <span>Tone</span>
+        <div class="tone-group" id="tone-group">
+          <button type="button" class="tone-btn active" data-tone="Premium">Premium</button>
+          <button type="button" class="tone-btn" data-tone="Playful">Playful</button>
+          <button type="button" class="tone-btn" data-tone="Minimal">Minimal</button>
+          <button type="button" class="tone-btn" data-tone="Bold">Bold</button>
         </div>
       </div>
-    </div>`;
-  }).join('');
-}
 
-async function load(url, label, msg) {
-  $('status').textContent = msg;
-  $('out').innerHTML = '';
-  try {
-    const r = await fetch(url);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error || 'Request failed');
-    render(j, label);
-  } catch (e) {
-    $('status').textContent = 'Error: ' + e.message;
-  }
-}
+      <button type="submit" id="generate-btn" class="generate-btn">
+        <span id="generate-icon">✦</span>
+        <span id="generate-label">Generate store</span>
+      </button>
+    </form>
 
-function search() {
-  const q = $('q').value.trim();
-  if (q) {
-    load('/api/research?q=' + encodeURIComponent(q), 'products', 'Searching CJ...').then(loadRecent);
-  }
-}
-async function loadRecent() {
-  try {
-    const r = await fetch('/api/searches?limit=15');
-    const j = await r.json();
-    const list = j.results || [];
-    $('recent').innerHTML = list.length
-      ? '<div class="meta" style="margin-bottom:6px">Recent searches:</div>' +
-        list.map((s) => '<button class="chip" data-q="' + esc(s.query) + '">' + esc(s.query) + '</button>').join('')
-      : '';
-  } catch (e) { /* ignore */ }
-}
-document.addEventListener('click', (e) => {
-  if (!e.target.classList.contains('chip')) return;
-  $('q').value = e.target.dataset.q;
-  search();
-});
-loadRecent();
-function winners() {
-  load('/api/research/winners', 'winners', 'Scanning niches... this takes about 15 seconds the first time');
-}
-$('win').addEventListener('click', winners);
-document.querySelectorAll('.season-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    const season = btn.dataset.season;
-    load('/api/research/winners/' + season, season + ' winners', 'Scanning ' + btn.textContent + '... this takes about 10 seconds the first time');
-  });
-});
-document.addEventListener('click', async (e) => {
-  if (!e.target.classList.contains('calc')) return;
-  const box = e.target.closest('.pf');
-  const res = box.querySelector('.res');
-  e.target.disabled = true;
-  res.textContent = 'Asking CJ for shipping and stock...';
-  try {
-    const u = '/api/research/profit?pid=' + encodeURIComponent(box.dataset.pid) +
-      '&sell=' + encodeURIComponent(box.querySelector('.sell').value) +
-      '&ad=' + encodeURIComponent(box.querySelector('.ad').value);
-    const r = await fetch(u);
-    const j = await r.json();
-    if (!j.ok) throw new Error(j.error || 'Failed');
-    const m = (x) => x == null ? 'unknown' : '$' + Number(x).toFixed(2);
-    const cls = j.profit == null ? '' : j.profit > 0 ? 'good' : 'bad';
-    res.innerHTML =
-      'Sell ' + m(j.sell) + ' - cost ' + m(j.cost) + ' - shipping ' + m(j.shipping) +
-      (j.shippingMethod ? ' (' + esc(j.shippingMethod) + (j.deliveryDays ? ', ' + esc(j.deliveryDays) + ' days' : '') + ')' : '') +
-      ' - fee ' + m(j.paymentFee) + ' - ads ' + m(j.adCost) +
-      '<br><b class="' + cls + '">Profit ' + m(j.profit) + (j.margin != null ? ' (' + j.margin + '%)' : '') + '</b>' +
-      ' &middot; Stock: ' + (j.inStock == null ? 'unknown' : j.inStock ? 'in stock' : 'OUT') +
-      '<br><i>Estimate: fee and ads are guesses, refunds not included.</i>';
-  } catch (err) {
-    res.textContent = 'Error: ' + err.message;
-  } finally {
-    e.target.disabled = false;
-  }
-});
-$('go').addEventListener('click', search);
-$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') search(); });
-</script>
+    <p id="error-msg" class="error-msg" hidden></p>
+
+    <div id="post-actions" class="post-actions" hidden>
+      <button type="button" id="regenerate-btn" class="ghost-btn">Regenerate with same inputs</button>
+      <button type="button" id="start-over-btn" class="ghost-btn muted">Start over</button>
+    </div>
+
+    <p class="footnote">
+      This calls Groq to draft a full product landing page: headline,
+      pricing, feature checklist, comparison table, usage guide, and
+      sample reviews. Treat it as a first draft — reviews and prices
+      shown here are AI-written placeholders, not real customer data.
+    </p>
+  </aside>
+
+  <!-- Preview canvas -->
+  <main class="canvas">
+    <div id="empty-state" class="empty-state">
+      <p>Fill in the product and tone on the left, then generate. Your product page preview will appear here.</p>
+    </div>
+
+    <div id="loading-state" class="loading-state" hidden>
+      <span class="spinner"></span> Drafting your store...
+    </div>
+
+    <div id="template-preview" class="store-card" hidden style="padding:0;overflow:hidden;">
+      <iframe id="template-iframe" title="Store preview" style="width:100%;height:85vh;border:0;display:block;"></iframe>
+      <div style="padding:0.75rem 1rem;border-top:1px solid #e3dbc9;">
+        <button type="button" id="reroll-template-btn" class="generate-btn" style="width:100%;">Try a different design</button>
+      </div>
+    </div>
+
+    <div id="publish-box" class="ad-box" hidden style="max-width:42rem;margin:1rem auto 0;">
+      <p class="ad-label">Publish to Shopify</p>
+      <label class="field" style="margin-bottom: 8px;">
+        <span>Your store's .myshopify.com domain</span>
+        <input type="text" id="shop-domain" placeholder="yourstore.myshopify.com" />
+      </label>
+      <button type="button" id="publish-btn" class="generate-btn">
+        <span id="publish-label">Publish to Shopify</span>
+      </button>
+      <p id="publish-status" class="footnote" style="margin-top: 8px;"></p>
+    </div>
+
+    <div id="layout-chooser" class="layout-chooser" hidden>
+      <h3 class="section-label" style="padding:0 1rem;">Pick a layout</h3>
+      <div id="layout-chooser-cards" class="layout-chooser-cards"></div>
+    </div>
+
+    <div id="store-preview" class="store-card" hidden>
+      <div id="announcement-bar" class="announcement-bar" hidden>
+        <div id="announcement-track" class="announcement-track"></div>
+      </div>
+      <div class="chrome-bar">
+        <span class="dot dot-amber"></span>
+        <span class="dot"></span>
+        <span class="dot"></span>
+        <span id="domain-hint" class="domain-hint"></span>
+      </div>
+
+      <!-- Storefront nav -->
+      <nav class="store-nav">
+        <span id="store-name" class="store-name"></span>
+        <div class="store-nav-links">
+          <span>Shop</span>
+          <span>About</span>
+          <span>Contact</span>
+        </div>
+        <span class="store-cart">🛒</span>
+      </nav>
+
+      <!-- Hero image gallery -->
+      <div id="hero-section" class="gallery-section">
+        <img id="hero-image" class="gallery-main-image" src="" alt="" />
+      </div>
+      <div id="hero-thumbs" class="hero-thumbs" hidden></div>
+
+      <div class="store-body">
+        <p id="store-tagline" class="store-tagline-plain"></p>
+        <h1 id="store-hero" class="store-hero-plain"></h1>
+
+        <div class="price-row">
+          <span id="price" class="price"></span>
+          <span id="original-price" class="original-price"></span>
+          <span id="discount-badge" class="discount-badge"></span>
+        </div>
+
+        <div id="payment-icons" class="payment-icons" hidden>
+          <span>AMEX</span><span>Apple Pay</span><span>G Pay</span><span>Mastercard</span><span>Visa</span><span>PayPal</span>
+        </div>
+
+        <button type="button" class="shop-now-btn">Shop now</button>
+
+        <div id="bundle-section" class="bundle-section" hidden>
+          <p class="bundle-label">DEAL</p>
+          <div id="bundle-options" class="bundle-options"></div>
+        </div>
+
+        <div id="progress-tracker" class="progress-tracker" hidden>
+          <div class="progress-step"><span class="progress-icon">📦</span><span>Ordered</span></div>
+          <div class="progress-line"></div>
+          <div class="progress-step"><span class="progress-icon">🚚</span><span>Shipped</span></div>
+          <div class="progress-line"></div>
+          <div class="progress-step"><span class="progress-icon">🎁</span><span>Delivered</span></div>
+        </div>
+
+        <ul id="feature-checklist" class="feature-checklist"></ul>
+
+        <div id="lifestyle-gallery" class="lifestyle-gallery" hidden></div>
+
+        <p id="store-story" class="store-story"></p>
+
+        <div id="accordion-section" class="accordion-section" hidden></div>
+
+        <!-- Why choose us comparison table -->
+        <div id="comparison-section" class="comparison-section" hidden>
+          <h3 class="section-label">Why choose us</h3>
+          <table id="comparison-table" class="comparison-table"></table>
+        </div>
+
+        <!-- Usage steps -->
+        <div id="usage-section" class="usage-section" hidden>
+          <h3 class="section-label">How it works</h3>
+          <div id="usage-steps" class="usage-steps"></div>
+        </div>
+
+        <h3 class="section-label">Featured products</h3>
+        <div id="product-list" class="product-grid"></div>
+
+        <!-- Customer reviews -->
+        <div id="reviews-section" class="reviews-section" hidden>
+          <h3 class="section-label">Customer reviews</h3>
+          <div id="reviews-list" class="reviews-list"></div>
+        </div>
+
+        <!-- FAQ -->
+        <div id="faq-section" class="faq-section" hidden>
+          <h3 class="section-label">Frequently asked questions</h3>
+          <div id="faq-list" class="faq-list"></div>
+        </div>
+
+        <div id="ad-box" class="ad-box" hidden>
+          <p class="ad-label">Ad idea</p>
+          <p id="ad-line" class="ad-line"></p>
+        </div>
+      </div>
+
+      <footer class="store-footer">
+        <span id="footer-store-name"></span> · preview draft, generated by AI
+      </footer>
+
+      <div id="sticky-bar" class="sticky-bar" hidden>
+        <img id="sticky-bar-img" src="" alt="" />
+        <div class="sticky-bar-info">
+          <span id="sticky-bar-name"></span>
+          <span id="sticky-bar-price"></span>
+        </div>
+        <button type="button" class="sticky-bar-btn">Shop now</button>
+      </div>
+    </div>
+  </main>
+
+</div>
+
+<script src="script.js"></script>
 </body>
  </html>
- 
