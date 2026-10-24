@@ -198,7 +198,24 @@ async function searchKeyword(key, q, size) {
       if (p) out.push(p);
     });
   });
-  return out;
+  return onlyRelevant(out, q);
+}
+
+// CJ's keyword search is loose (a search for "hand fan" can return glue or a
+// "fan-shaped" shelf). Keep only products whose NAME contains the searched words.
+// If that leaves too few, fall back to products that match at least half of the words.
+function onlyRelevant(list, q) {
+  const words = String(q || '').toLowerCase().split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3)
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w));
+  if (!words.length) return list;
+  const res = words.map((w) => new RegExp('\\b' + w + '(?:s|es)?\\b'));
+  const count = (p) => { const n = String(p.name || '').toLowerCase(); return res.filter((r) => r.test(n)).length; };
+  const full = list.filter((p) => count(p) === words.length);
+  if (full.length >= 3) return full;
+  const half = list.filter((p) => count(p) >= Math.max(1, Math.ceil(words.length / 2)));
+  if (half.length >= 3) return half;
+  return full.length ? full : list;
 }
 
 const publicFields = (p) => ({
