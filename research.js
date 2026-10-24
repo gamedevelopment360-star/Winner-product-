@@ -69,7 +69,7 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
 
 function suggestPrice(cost) {
-  const p = clamp(cost * 3.2 + EST_SHIPPING, 14.99, 69.99);
+  const p = Math.max(14.99, cost * 3.2 + EST_SHIPPING); // no upper cap, so costly items are not scored as if cheap
   return Math.floor(p) + 0.99;
 }
 
