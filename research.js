@@ -34,8 +34,8 @@ const NICHES = [
 // Kept separate from SEASONAL_KEYWORDS below (that one is for SCORING an
 // already-found product by name; this one is for SEARCHING CJ directly).
 const SEASON_GROUPS = {
-  summer: ['summer', 'pool float', 'beach towel', 'swimwear', 'sunscreen', 'cooling'],
-  winter: ['winter', 'heated', 'snow boot', 'scarf', 'thermal', 'electric blanket'],
+  summer: ['mini fan', 'neck fan', 'cooling towel', 'portable air cooler', 'cooling pillow', 'ice pack', 'sunscreen', 'swimwear'],
+  winter: ['hand warmer', 'electric heater', 'heated blanket', 'heated jacket', 'thermal underwear', 'winter gloves', 'warm socks', 'scarf'],
   christmas: ['christmas', 'xmas decoration', 'ornament', 'advent calendar', 'santa'],
   halloween: ['halloween', 'costume', 'pumpkin decor', 'spooky decoration'],
   valentine: ['valentine gift', 'romantic gift', 'couple gift'],
@@ -54,8 +54,8 @@ const SEASONAL_KEYWORDS = [
   { words: ['easter', 'bunny egg'], months: [2, 3] },
   { words: ['thanksgiving'], months: [10, 11] },
   { words: ['new year', 'countdown'], months: [12, 1] },
-  { words: ['summer', 'pool float', 'beach', 'swimwear', 'sunscreen', 'cooling'], months: [4, 5, 6, 7] },
-  { words: ['winter', 'heated', 'snow', 'scarf', 'thermal', 'ice'], months: [10, 11, 12, 1] },
+  { words: ['summer', 'pool float', 'beach', 'swimwear', 'sunscreen', 'cooling', 'mini fan', 'neck fan', 'portable fan', 'handheld fan', 'air cooler', 'ice pack'], months: [4, 5, 6, 7] },
+  { words: ['winter', 'heated', 'heater', 'warmer', 'snow', 'scarf', 'thermal', 'electric blanket', 'ice scraper'], months: [10, 11, 12, 1] },
   { words: ['back to school', 'school supply', 'backpack'], months: [7, 8] },
   { words: ['garden', 'patio', 'outdoor furniture'], months: [3, 4, 5] },
   { words: ['mother\'s day'], months: [4, 5] },
