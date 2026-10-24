@@ -2,6 +2,7 @@
 // Routes (login is already enforced in server.js; these also need the user's CJ key):
 //   GET /api/research?q=keyword      search CJ, score each product
 //   GET /api/research/winners        scan several niches, best score first
+//   GET /api/saved                   products saved in the database
 //   GET /api/research/profit?pid=&sell=&ad=   real shipping + stock + profit for one product
 //
 // The score means "worth a small test", NOT "guaranteed profit".
@@ -13,6 +14,8 @@ function requireCjKey(req, res, next) {
   req.cjKey = process.env.CJ_API_KEY;
   next();
 }
+
+const db = require('./db');
 
 const BASE = 'https://developers.cjdropshipping.com/api2.0/v1';
 const COUNTRY = (process.env.RESEARCH_COUNTRY || 'US').toUpperCase();
@@ -140,6 +143,7 @@ module.exports = function (app) {
     try {
       const list = await searchKeyword(req.cjKey, q, 30);
       list.sort((a, b) => b.score - a.score);
+      db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
       res.json({ results: list.map(publicFields) });
     } catch (e) {
       console.error('research search failed:', e.message || e);
@@ -163,12 +167,25 @@ module.exports = function (app) {
         await sleep(1100); // stay under CJ's request rate limit
       }
       all.sort((a, b) => b.score - a.score);
+      db.saveProducts(all, 'winners scan').catch((e) => console.error('save failed:', e.message || e));
       const results = all.slice(0, 20).map(publicFields);
       if (results.length) winnersCache.set(req.cjKey, { at: Date.now(), results });
       res.json({ results });
     } catch (e) {
       console.error('winners scan failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Scan failed' });
+    }
+  });
+
+  // Products saved in the database. ?q=word  &sort=new  &limit=100
+  app.get('/api/saved', async (req, res) => {
+    if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on the server.' });
+    try {
+      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit });
+      res.json({ total: await db.count(), results });
+    } catch (e) {
+      console.error('saved list failed:', e.message || e);
+      res.status(502).json({ error: e.message || 'Could not read saved products' });
     }
   });
 
