@@ -144,6 +144,7 @@ module.exports = function (app) {
       const list = await searchKeyword(req.cjKey, q, 30);
       list.sort((a, b) => b.score - a.score);
       db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
+      db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
       res.json({ results: list.map(publicFields) });
     } catch (e) {
       console.error('research search failed:', e.message || e);
@@ -186,6 +187,17 @@ module.exports = function (app) {
     } catch (e) {
       console.error('saved list failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read saved products' });
+    }
+  });
+
+  // Words that were searched, newest first. ?limit=20
+  app.get('/api/searches', async (req, res) => {
+    if (!db.enabled()) return res.json({ results: [] });
+    try {
+      res.json({ results: await db.listSearches(req.query.limit) });
+    } catch (e) {
+      console.error('searches list failed:', e.message || e);
+      res.json({ results: [] });
     }
   });
 

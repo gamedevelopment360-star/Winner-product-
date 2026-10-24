@@ -38,7 +38,13 @@ function init() {
         last_query TEXT,
         first_seen TIMESTAMPTZ DEFAULT now(),
         last_seen TIMESTAMPTZ DEFAULT now()
-      )`).then(() => true).catch((e) => {
+      )`).then(() => p.query(`
+      CREATE TABLE IF NOT EXISTS searches (
+        id SERIAL PRIMARY KEY,
+        query TEXT NOT NULL,
+        results INTEGER,
+        searched_at TIMESTAMPTZ DEFAULT now()
+      )`)).then(() => true).catch((e) => {
         console.error('database setup failed:', e.message || e);
         ready = null;
         return false;
@@ -100,10 +106,26 @@ async function listProducts(opts) {
   }));
 }
 
+async function saveSearch(query, results) {
+  if (!enabled() || !query) return;
+  if (!(await init())) return;
+  await getPool().query('INSERT INTO searches (query, results) VALUES ($1, $2)',
+    [String(query).slice(0, 80), results == null ? null : results]);
+}
+
+async function listSearches(limit) {
+  if (!(await init())) throw new Error('Database is not set up.');
+  const n = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+  const r = await getPool().query(
+    `SELECT LOWER(query) AS query, COUNT(*)::int AS times, MAX(searched_at) AS last_time
+       FROM searches GROUP BY LOWER(query) ORDER BY MAX(searched_at) DESC LIMIT $1`, [n]);
+  return r.rows;
+}
+
 async function count() {
   if (!(await init())) return 0;
   const r = await getPool().query('SELECT COUNT(*)::int AS n FROM products');
   return r.rows[0].n;
 }
 
-module.exports = { enabled, saveProducts, listProducts, count };
+module.exports = { enabled, saveProducts, listProducts, saveSearch, listSearches, count };
