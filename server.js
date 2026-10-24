@@ -25,7 +25,7 @@ app.use((req, res, next) => {
 });
 
 require('./research')(app);
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'Pubic')));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log('Winner Finder running on port ' + port));
