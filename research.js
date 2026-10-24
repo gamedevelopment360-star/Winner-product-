@@ -211,10 +211,9 @@ function onlyRelevant(list, q) {
   if (!words.length) return list;
   const res = words.map((w) => new RegExp('\\b' + w + '(?:s|es)?\\b'));
   const count = (p) => { const n = String(p.name || '').toLowerCase(); return res.filter((r) => r.test(n)).length; };
-  const full = list.filter((p) => count(p) === words.length);
-  if (full.length >= 3) return full;
-  const half = list.filter((p) => count(p) >= Math.max(1, Math.ceil(words.length / 2)));
-  return half; // may be short or empty: better than showing unrelated products
+  // 1-2 words: every word must be in the name. 3+ words: all but one.
+  const need = words.length <= 2 ? words.length : words.length - 1;
+  return list.filter((p) => count(p) >= need); // may be short or empty: better than unrelated products
 }
 
 const publicFields = (p) => ({
@@ -226,7 +225,7 @@ const publicFields = (p) => ({
 
 // ---------- routes ----------
 module.exports = function (app) {
-  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v2' }));
+  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v3' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
   app.get('/api/research', requireCjKey, async (req, res) => {
