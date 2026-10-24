@@ -214,8 +214,7 @@ function onlyRelevant(list, q) {
   const full = list.filter((p) => count(p) === words.length);
   if (full.length >= 3) return full;
   const half = list.filter((p) => count(p) >= Math.max(1, Math.ceil(words.length / 2)));
-  if (half.length >= 3) return half;
-  return full.length ? full : list;
+  return half; // may be short or empty: better than showing unrelated products
 }
 
 const publicFields = (p) => ({
@@ -227,6 +226,7 @@ const publicFields = (p) => ({
 
 // ---------- routes ----------
 module.exports = function (app) {
+  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v2' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
   app.get('/api/research', requireCjKey, async (req, res) => {
