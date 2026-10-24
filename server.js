@@ -24,7 +24,7 @@ if (!password) {
 }
 
 require('./research')(app);
-app.use(express.static(path.join(__dirname, 'Pubic')));
+app.use(express.static(path.join(__dirname, 'Public')));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log('Winner Finder running on port ' + port));
