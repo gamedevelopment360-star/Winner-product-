@@ -87,11 +87,16 @@ async function listProducts(opts) {
   if (!(await init())) throw new Error('Database is not set up.');
   const limit = Math.min(Math.max(parseInt(opts.limit, 10) || 100, 1), 500);
   const params = [];
-  let where = '';
+  const conds = [];
   if (opts.q) {
     params.push('%' + String(opts.q).slice(0, 80) + '%');
-    where = 'WHERE name ILIKE $1 OR category ILIKE $1 OR last_query ILIKE $1';
+    conds.push('(name ILIKE $' + params.length + ' OR category ILIKE $' + params.length + ' OR last_query ILIKE $' + params.length + ')');
   }
+  if (opts.maxCost) {
+    params.push(opts.maxCost);
+    conds.push('cost <= $' + params.length);
+  }
+  const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   params.push(limit);
   const order = opts.sort === 'new' ? 'last_seen DESC' : 'score DESC, last_seen DESC';
   const r = await getPool().query(
