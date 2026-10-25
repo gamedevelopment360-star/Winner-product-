@@ -162,7 +162,7 @@ function render(j, label) {
   // Keep the order the server sent (trending first, or most new sellers first).
   const products = j.results;
 
-  $("status").textContent = `${products.length} ${label}` + (j.source ? ` (${j.source})` : "") + ".";
+  $("status").textContent = `${products.length} ${label}` + (j.source ? ` (${j.source})` : "") + "." + (j.message ? " " + j.message : "");
   $("out").innerHTML = products.map((p, index) => {
     const score = numberOrNull(p.score);
     const cls = score === null ? "neutral" :
