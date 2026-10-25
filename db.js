@@ -44,6 +44,12 @@ function init() {
         query TEXT NOT NULL,
         results INTEGER,
         searched_at TIMESTAMPTZ DEFAULT now()
+      )`)).then(() => p.query(`
+      CREATE TABLE IF NOT EXISTS snapshots (
+        pid TEXT NOT NULL,
+        day DATE NOT NULL DEFAULT CURRENT_DATE,
+        listed INTEGER NOT NULL,
+        PRIMARY KEY (pid, day)
       )`)).then(() => true).catch((e) => {
         console.error('database setup failed:', e.message || e);
         ready = null;
@@ -73,6 +79,13 @@ async function saveProducts(list, query) {
          x.category || '', x.listedBySellers == null ? null : x.listedBySellers,
          x.score, String(query || '').slice(0, 80)]
       );
+      if (x.listedBySellers != null && !isNaN(Number(x.listedBySellers))) {
+        await p.query(
+          `INSERT INTO snapshots (pid, day, listed) VALUES ($1, CURRENT_DATE, $2)
+           ON CONFLICT (pid, day) DO UPDATE SET listed = EXCLUDED.listed`,
+          [String(x.pid), Number(x.listedBySellers)]
+        );
+      }
       n++;
     } catch (e) {
       console.error('could not save product:', e.message || e);
@@ -111,6 +124,38 @@ async function listProducts(opts) {
   }));
 }
 
+// Products whose number of sellers grew the most over the last days (up to 8).
+// Needs saved history: a product shows here only after it was seen on 2+ different days.
+async function listRising(opts) {
+  opts = opts || {};
+  if (!(await init())) throw new Error('Database is not set up.');
+  const limit = Math.min(Math.max(parseInt(opts.limit, 10) || 30, 1), 100);
+  const maxCost = opts.maxCost || 1e9;
+  const r = await getPool().query(
+    `WITH latest AS (
+       SELECT DISTINCT ON (pid) pid, day, listed FROM snapshots ORDER BY pid, day DESC
+     ), base AS (
+       SELECT DISTINCT ON (s.pid) s.pid, s.day, s.listed
+         FROM snapshots s JOIN latest l ON l.pid = s.pid
+        WHERE s.day <= l.day - 1 AND s.day >= l.day - 8
+        ORDER BY s.pid, s.day ASC
+     )
+     SELECT p.pid, p.name, p.image, p.cost, p.suggested_price, p.category, p.score,
+            l.listed AS now_listed, b.listed AS then_listed, (l.day - b.day) AS days
+       FROM latest l
+       JOIN base b ON b.pid = l.pid
+       JOIN products p ON p.pid = l.pid
+      WHERE l.listed > b.listed AND p.cost <= $1
+      ORDER BY (l.listed - b.listed) DESC, p.score DESC
+      LIMIT $2`, [maxCost, limit]);
+  return r.rows.map((x) => ({
+    pid: x.pid, name: x.name, image: x.image,
+    cost: Number(x.cost), suggestedPrice: Number(x.suggested_price),
+    category: x.category, listedBySellers: x.now_listed, score: x.score,
+    growth: x.now_listed - x.then_listed, growthDays: Number(x.days)
+  }));
+}
+
 async function saveSearch(query, results) {
   if (!enabled() || !query) return;
   if (!(await init())) return;
@@ -133,4 +178,4 @@ async function count() {
   return r.rows[0].n;
 }
 
-module.exports = { enabled, saveProducts, listProducts, saveSearch, listSearches, count };
+module.exports = { enabled, saveProducts, listProducts, listRising, saveSearch, listSearches, count };

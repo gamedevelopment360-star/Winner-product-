@@ -22,6 +22,7 @@ const COUNTRY = (process.env.RESEARCH_COUNTRY || 'US').toUpperCase();
 const FEE_PCT = 2.9;      // payment fee percent, plus the fixed part below
 const FEE_FIXED = 0.30;
 const EST_SHIPPING = 4;   // rough shipping guess used only for the list score
+const MAX_COST = parseFloat(process.env.MAX_COST) || 25; // skip products that cost CJ more than this ($)
 const MIN_PROFIT = parseFloat(process.env.MIN_PROFIT) || 7; // list score drops if profit before ads is below this ($)
 
 const NICHES = [
@@ -34,13 +35,25 @@ const NICHES = [
 // Kept separate from SEASONAL_KEYWORDS below (that one is for SCORING an
 // already-found product by name; this one is for SEARCHING CJ directly).
 const SEASON_GROUPS = {
-  summer: ['mini fan', 'neck fan', 'cooling towel', 'portable air cooler', 'cooling pillow', 'ice pack', 'sunscreen', 'swimwear'],
-  winter: ['hand warmer', 'electric heater', 'heated blanket', 'heated jacket', 'thermal underwear', 'winter gloves', 'warm socks', 'scarf'],
+  summer: ['handheld fan', 'mini fan', 'neck fan', 'portable fan', 'clip on fan', 'cooling towel', 'cooling pillow', 'cooling blanket', 'air cooler', 'ice pack'],
+  winter: ['hand warmer', 'electric heater', 'space heater', 'heated blanket', 'heated vest', 'heated gloves', 'thermal underwear', 'winter gloves', 'warm socks', 'beanie'],
   christmas: ['christmas', 'xmas decoration', 'ornament', 'advent calendar', 'santa'],
   halloween: ['halloween', 'costume', 'pumpkin decor', 'spooky decoration'],
   valentine: ['valentine gift', 'romantic gift', 'couple gift'],
   backtoschool: ['back to school', 'school supply', 'backpack', 'pencil case'],
 };
+
+// A product shown under a season button must have one of these in its name.
+// Looser than the exact keyword, so the list is longer, but still on-topic.
+const SEASON_MUST = {
+  summer: /\bfans?\b|cooling|cooler|\bcool\b|ice pack|ice silk|air conditioner|misting/i,
+  winter: /heat|warmer|warming|thermal|glove|beanie|\bsocks?\b|fleece|winter/i,
+  christmas: /christmas|xmas|santa|ornament|advent|reindeer|\belf\b/i,
+  halloween: /halloween|costume|pumpkin|spooky|witch|ghost|skeleton/i,
+  valentine: /valentine|\blove\b|heart|romantic|couple|\brose\b/i,
+  backtoschool: /school|backpack|pencil|notebook|lunch|student/i,
+};
+const NOT_THESE = /fan[- ]shaped/i; // "fan-shaped" is a shape, not a fan
 
 // ---------- seasonality ----------
 // Keyword -> the months (1-12) the product peaks in. A product matching
@@ -54,8 +67,8 @@ const SEASONAL_KEYWORDS = [
   { words: ['easter', 'bunny egg'], months: [2, 3] },
   { words: ['thanksgiving'], months: [10, 11] },
   { words: ['new year', 'countdown'], months: [12, 1] },
-  { words: ['summer', 'pool float', 'beach', 'swimwear', 'sunscreen', 'cooling', 'mini fan', 'neck fan', 'portable fan', 'handheld fan', 'air cooler', 'ice pack'], months: [4, 5, 6, 7] },
-  { words: ['winter', 'heated', 'heater', 'warmer', 'snow', 'scarf', 'thermal', 'electric blanket', 'ice scraper'], months: [10, 11, 12, 1] },
+  { words: ['summer', 'pool float', 'beach', 'swimsuit', 'swimwear', 'sunscreen', 'cooling', 'mini fan', 'neck fan', 'handheld fan', 'portable fan', 'hand fan', 'air cooler', 'ice pack', 'sun hat'], months: [4, 5, 6, 7] },
+  { words: ['winter', 'heated', 'heater', 'warmer', 'thermal', 'electric blanket', 'beanie', 'glove', 'warm sock', 'snow', 'ice scraper'], months: [10, 11, 12, 1] },
   { words: ['back to school', 'school supply', 'backpack'], months: [7, 8] },
   { words: ['garden', 'patio', 'outdoor furniture'], months: [3, 4, 5] },
   { words: ['mother\'s day'], months: [4, 5] },
@@ -167,7 +180,7 @@ function scoreProduct(p) {
 
 function mapProduct(x) {
   const cost = firstNum(x.nowPrice != null ? x.nowPrice : x.sellPrice);
-  if (!cost || cost <= 0) return null;
+  if (!cost || cost <= 0 || cost > MAX_COST) return null;
   const p = {
     pid: x.id || x.pid,
     name: x.nameEn || x.productNameEn || x.name || 'Unnamed product',
@@ -185,7 +198,7 @@ function mapProduct(x) {
   return p;
 }
 
-async function searchKeyword(key, q, size) {
+async function searchKeyword(key, q, size, keep) {
   const qs = new URLSearchParams({
     keyWord: q, page: '1', size: String(size || 20), countryCode: COUNTRY
   });
@@ -198,12 +211,12 @@ async function searchKeyword(key, q, size) {
       if (p) out.push(p);
     });
   });
-  return onlyRelevant(out, q);
+  return keep ? out.filter(keep) : onlyRelevant(out, q);
 }
 
 // CJ's keyword search is loose (a search for "hand fan" can return glue or a
 // "fan-shaped" shelf). Keep only products whose NAME contains the searched words.
-// If that leaves too few, fall back to products that match at least half of the words.
+// Products that do not match are dropped, so the list can be short but never off-topic.
 function onlyRelevant(list, q) {
   const words = String(q || '').toLowerCase().split(/[^a-z0-9]+/)
     .filter((w) => w.length >= 3)
@@ -216,23 +229,27 @@ function onlyRelevant(list, q) {
   return list.filter((p) => count(p) >= need); // may be short or empty: better than unrelated products
 }
 
+// How crowded a product is, from how many sellers already list it.
+const competitionOf = (n) => (n == null || isNaN(Number(n)) ? null : Number(n) < 50 ? 'Low' : Number(n) < 200 ? 'Medium' : 'High');
+
 const publicFields = (p) => ({
   pid: p.pid, name: p.name, image: p.image, cost: p.cost,
   suggestedPrice: p.suggestedPrice, category: p.category,
   listedBySellers: p.listedBySellers == null ? '?' : p.listedBySellers,
-  score: p.score, seasonLabel: p.seasonLabel || null
+  score: p.score, seasonLabel: p.seasonLabel || null,
+  competition: competitionOf(p.listedBySellers)
 });
 
 // ---------- routes ----------
 module.exports = function (app) {
-  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v3' }));
+  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
   app.get('/api/research', requireCjKey, async (req, res) => {
     const q = String(req.query.q || '').trim().slice(0, 80);
     if (!q) return res.status(400).json({ error: 'Type a keyword first.' });
     try {
-      const list = await searchKeyword(req.cjKey, q, 30);
+      const list = await searchKeyword(req.cjKey, q, 50);
       list.sort((a, b) => b.score - a.score);
       db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
       db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
@@ -289,12 +306,20 @@ module.exports = function (app) {
 
   async function scanSeason(key, seasonKey) {
     const words = SEASON_GROUPS[seasonKey];
+    const must = SEASON_MUST[seasonKey];
+    const keep = (p) => (!must || must.test(p.name)) && !NOT_THESE.test(p.name);
+    const perKeyword = Math.ceil(24 / words.length);
     const seen = new Set();
     const all = [];
     for (const n of words) {
       try {
-        const found = await searchKeyword(key, n, 20);
-        found.forEach((p) => { if (!seen.has(p.pid)) { seen.add(p.pid); all.push(p); } });
+        const found = await searchKeyword(key, n, 50, keep);
+        found.sort((a, b) => b.score - a.score);
+        let taken = 0; // best few from EACH keyword, so fans are not pushed out by one popular keyword
+        for (const p of found) {
+          if (taken >= perKeyword) break;
+          if (!seen.has(p.pid)) { seen.add(p.pid); all.push(p); taken++; }
+        }
       } catch (e) {
         console.error('season niche failed:', n, e.message || e);
       }
@@ -302,7 +327,7 @@ module.exports = function (app) {
     }
     all.sort((a, b) => b.score - a.score);
     db.saveProducts(all, seasonKey + ' winners scan').catch((e) => console.error('save failed:', e.message || e));
-    const results = all.slice(0, 20).map(publicFields);
+    const results = all.slice(0, 30).map(publicFields);
     if (results.length) seasonCache.set(key + ':' + seasonKey, { at: Date.now(), results });
     return results;
   }
@@ -328,11 +353,83 @@ module.exports = function (app) {
     }
   });
 
+  // CJ's own "Trending Product" list (searchType 2). Cached 6 hours (each CJ call costs points).
+  let trendingCache = null;
+  app.get('/api/research/trending', requireCjKey, async (req, res) => {
+    if (trendingCache && Date.now() - trendingCache.at < 6 * 3600 * 1000) return res.json({ results: trendingCache.results });
+    try {
+      const qs = new URLSearchParams({ pageNum: '1', pageSize: '50', searchType: '2', countryCode: COUNTRY });
+      const j = await cjCall(req.cjKey, '/product/list?' + qs.toString());
+      const d = j.data || {};
+      let rows = Array.isArray(d.list) ? d.list : [];
+      if (!rows.length && Array.isArray(d.content)) {
+        d.content.forEach((b) => (b.productList || []).forEach((x) => rows.push(x)));
+      }
+      const list = rows.map(mapProduct).filter(Boolean);
+      list.sort((a, b) => b.score - a.score);
+      db.saveProducts(list, 'cj trending').catch((e) => console.error('save failed:', e.message || e));
+      const results = list.slice(0, 30).map(publicFields);
+      if (results.length) trendingCache = { at: Date.now(), results };
+      res.json({ results, message: results.length ? '' : 'CJ returned no trending products under your cost limit.' });
+    } catch (e) {
+      console.error('trending failed:', e.message || e);
+      res.status(502).json({ error: e.message || 'CJ trending failed' });
+    }
+  });
+
+  // Trending FANS: CJ's trending list limited to fans. If CJ has none, show the fans
+  // that the most sellers list. Cached 6 hours (each CJ call costs points).
+  let fanCache = null;
+  app.get('/api/research/trending-fans', requireCjKey, async (req, res) => {
+    if (fanCache && Date.now() - fanCache.at < 6 * 3600 * 1000) return res.json(fanCache.data);
+    const fanOnly = (p) => SEASON_MUST.summer.test(p.name) && /\bfans?\b/i.test(p.name) && !NOT_THESE.test(p.name);
+    try {
+      let list = [];
+      let source = 'CJ trending fans';
+      try {
+        const qs = new URLSearchParams({ pageNum: '1', pageSize: '50', searchType: '2', productNameEn: 'fan', countryCode: COUNTRY });
+        const j = await cjCall(req.cjKey, '/product/list?' + qs.toString());
+        const d = j.data || {};
+        let rows = Array.isArray(d.list) ? d.list : [];
+        if (!rows.length && Array.isArray(d.content)) d.content.forEach((b) => (b.productList || []).forEach((x) => rows.push(x)));
+        list = rows.map(mapProduct).filter(Boolean).filter(fanOnly);
+      } catch (e) { console.error('trending fans (CJ list) failed:', e.message || e); }
+      if (!list.length) {
+        source = 'fans listed by the most sellers';
+        await sleep(1100);
+        list = await searchKeyword(req.cjKey, 'fan', 50, fanOnly);
+        list.sort((a, b) => (b.listedBySellers || 0) - (a.listedBySellers || 0));
+      } else {
+        list.sort((a, b) => b.score - a.score);
+      }
+      db.saveProducts(list, 'trending fans').catch((e) => console.error('save failed:', e.message || e));
+      const results = list.slice(0, 30).map(publicFields);
+      const data = { results, message: results.length ? '' : 'No fans found under your cost limit.', source };
+      if (results.length) fanCache = { at: Date.now(), data };
+      res.json(data);
+    } catch (e) {
+      console.error('trending fans failed:', e.message || e);
+      res.status(502).json({ error: e.message || 'Trending fans failed' });
+    }
+  });
+
+  // Products whose number of sellers grew the most in the last days (from saved daily history).
+  app.get('/api/research/rising', async (req, res) => {
+    if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so rising products cannot be tracked.' });
+    try {
+      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
+      res.json({ results, message: results.length ? '' : 'No rising products yet. The site saves each product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
+    } catch (e) {
+      console.error('rising failed:', e.message || e);
+      res.status(502).json({ error: e.message || 'Could not read rising products' });
+    }
+  });
+
   // Products saved in the database. ?q=word  &sort=new  &limit=100
   app.get('/api/saved', async (req, res) => {
     if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on the server.' });
     try {
-      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit });
+      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST });
       res.json({ total: await db.count(), results });
     } catch (e) {
       console.error('saved list failed:', e.message || e);
