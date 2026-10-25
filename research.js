@@ -371,8 +371,28 @@ module.exports = function (app) {
       list.sort((a, b) => b.score - a.score);
       console.log('CJ trending: ' + rows.length + ' from CJ, ' + list.length + ' kept (cost limit $' + TREND_MAX_COST + ')');
       db.saveProducts(list, 'cj trending').catch((e) => console.error('save failed:', e.message || e));
-      const results = list.slice(0, 30).map(publicFields);
+      let results = list.slice(0, 30).map(publicFields);
+      let added = 0;
+      if (results.length < 10) {
+        // CJ's trending list is short, so add the best products from the niche scan
+        try {
+          const hit = winnersCache.get(req.cjKey);
+          let extra;
+          if (hit && Date.now() - hit.at < 6 * 3600 * 1000) extra = hit.results;
+          else {
+            let run = scansRunning.get(req.cjKey);
+            if (!run) {
+              run = scanWinners(req.cjKey).finally(() => scansRunning.delete(req.cjKey));
+              scansRunning.set(req.cjKey, run);
+            }
+            extra = await run;
+          }
+          const have = new Set(results.map((p) => p.pid));
+          extra.forEach((p) => { if (!have.has(p.pid) && results.length < 30) { have.add(p.pid); results.push(p); added++; } });
+        } catch (e) { console.error('trending extra failed:', e.message || e); }
+      }
       if (results.length) trendingCache = { at: Date.now(), results };
+      if (added) return res.json({ results, message: 'CJ sent only ' + list.length + ' trending, so ' + added + ' top products from the niche scan were added.' });
       res.json({ results, message: results.length ? (rows.length > list.length ? (rows.length - list.length) + ' of ' + rows.length + ' CJ trending products were hidden (cost over $' + TREND_MAX_COST + ' or no price).' : 'CJ sent ' + rows.length + ' trending products.') : 'CJ returned no trending products under your cost limit.' });
     } catch (e) {
       console.error('trending failed:', e.message || e);
