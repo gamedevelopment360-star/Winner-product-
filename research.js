@@ -373,7 +373,7 @@ module.exports = function (app) {
       db.saveProducts(list, 'cj trending').catch((e) => console.error('save failed:', e.message || e));
       const results = list.slice(0, 30).map(publicFields);
       if (results.length) trendingCache = { at: Date.now(), results };
-      res.json({ results, message: results.length ? (rows.length > list.length ? (rows.length - list.length) + ' of ' + rows.length + ' CJ trending products were hidden (cost over $' + TREND_MAX_COST + ' or no price).' : '') : 'CJ returned no trending products under your cost limit.' });
+      res.json({ results, message: results.length ? (rows.length > list.length ? (rows.length - list.length) + ' of ' + rows.length + ' CJ trending products were hidden (cost over $' + TREND_MAX_COST + ' or no price).' : 'CJ sent ' + rows.length + ' trending products.') : 'CJ returned no trending products under your cost limit.' });
     } catch (e) {
       console.error('trending failed:', e.message || e);
       res.status(502).json({ error: e.message || 'CJ trending failed' });
