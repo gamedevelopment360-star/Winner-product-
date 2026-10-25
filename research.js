@@ -23,6 +23,7 @@ const FEE_PCT = 2.9;      // payment fee percent, plus the fixed part below
 const FEE_FIXED = 0.30;
 const EST_SHIPPING = 4;   // rough shipping guess used only for the list score
 const MAX_COST = parseFloat(process.env.MAX_COST) || 25; // skip products that cost CJ more than this ($)
+const TREND_MAX_COST = parseFloat(process.env.TRENDING_MAX_COST) || 100; // CJ Trending button: skip products that cost more than this ($)
 const MIN_PROFIT = parseFloat(process.env.MIN_PROFIT) || 7; // list score drops if profit before ads is below this ($)
 
 const NICHES = [
@@ -178,9 +179,10 @@ function scoreProduct(p) {
   return Math.round(clamp(s, 0, 100));
 }
 
-function mapProduct(x) {
+function mapProduct(x, maxCost) {
+  const limit = typeof maxCost === 'number' ? maxCost : MAX_COST;
   const cost = firstNum(x.nowPrice != null ? x.nowPrice : x.sellPrice);
-  if (!cost || cost <= 0 || cost > MAX_COST) return null;
+  if (!cost || cost <= 0 || cost > limit) return null;
   const p = {
     pid: x.id || x.pid,
     name: x.nameEn || x.productNameEn || x.name || 'Unnamed product',
@@ -365,12 +367,13 @@ module.exports = function (app) {
       if (!rows.length && Array.isArray(d.content)) {
         d.content.forEach((b) => (b.productList || []).forEach((x) => rows.push(x)));
       }
-      const list = rows.map(mapProduct).filter(Boolean);
+      const list = rows.map((x) => mapProduct(x, TREND_MAX_COST)).filter(Boolean);
       list.sort((a, b) => b.score - a.score);
+      console.log('CJ trending: ' + rows.length + ' from CJ, ' + list.length + ' kept (cost limit $' + TREND_MAX_COST + ')');
       db.saveProducts(list, 'cj trending').catch((e) => console.error('save failed:', e.message || e));
       const results = list.slice(0, 30).map(publicFields);
       if (results.length) trendingCache = { at: Date.now(), results };
-      res.json({ results, message: results.length ? '' : 'CJ returned no trending products under your cost limit.' });
+      res.json({ results, message: results.length ? (rows.length > list.length ? (rows.length - list.length) + ' of ' + rows.length + ' CJ trending products were hidden (cost over $' + TREND_MAX_COST + ' or no price).' : '') : 'CJ returned no trending products under your cost limit.' });
     } catch (e) {
       console.error('trending failed:', e.message || e);
       res.status(502).json({ error: e.message || 'CJ trending failed' });
