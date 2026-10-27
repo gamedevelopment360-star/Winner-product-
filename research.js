@@ -13,6 +13,7 @@
 
 // Standalone site: the CJ key comes from the CJ_API_KEY environment variable.
 function requireCjKey(req, res, next) {
+  if (!USE_CJ) { req.cjKey = process.env.CJ_API_KEY || 'none'; return next(); } // AliExpress mode
   if (!process.env.CJ_API_KEY) return res.status(503).json({ error: 'CJ_API_KEY is not set on the server.' });
   req.cjKey = process.env.CJ_API_KEY;
   next();
@@ -27,6 +28,8 @@ const FEE_FIXED = 0.30;
 const EST_SHIPPING = 4;   // rough shipping guess used only for the list score
 const MAX_COST = parseFloat(process.env.MAX_COST) || 25; // skip products that cost CJ more than this ($)
 const TREND_MAX_COST = parseFloat(process.env.TRENDING_MAX_COST) || 100; // CJ Trending button: skip products that cost more than this ($)
+const USE_CJ = process.env.USE_CJ === 'true'; // CJ is OFF by default: every button uses AliExpress. Set USE_CJ=true in Render to turn CJ back on.
+const ALI_KEYWORDS_PER_BUTTON = parseInt(process.env.ALI_KEYWORDS, 10) || 4; // AliExpress searches per button tap (each one uses RapidAPI quota)
 const MIN_PROFIT = parseFloat(process.env.MIN_PROFIT) || 7; // list score drops if profit before ads is below this ($)
 
 const NICHES = [
@@ -133,7 +136,23 @@ async function token(key) {
   return login;
 }
 
+// CJ sometimes answers "Too Many Requests" (limit is per IP; a free Render server shares its IP).
+// Wait a little and try again, up to 4 times.
 async function cjCall(key, path, opts) {
+  let lastErr;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    try {
+      return await cjCallOnce(key, path, opts);
+    } catch (e) {
+      lastErr = e;
+      if (!/too many requests/i.test(String((e && e.message) || e)) || attempt === 4) throw e;
+      await sleep(2000 * attempt);
+    }
+  }
+  throw lastErr;
+}
+
+async function cjCallOnce(key, path, opts) {
   opts = opts || {};
   const t = await token(key);
   const r = await fetch(BASE + path, {
@@ -260,9 +279,24 @@ async function searchAliExpress(q, size) {
     return [];
   }
 }
+// Used by the CJ buttons when CJ is blocked: search AliExpress for the first few keywords instead.
+// (Only 3 keywords, so it does not use up your RapidAPI quota.)
+async function aliFallback(keywords, keep) {
+  const seen = new Set();
+  const out = [];
+  for (const k of keywords.slice(0, ALI_KEYWORDS_PER_BUTTON)) {
+    const found = await searchAliExpress(k, 30);
+    found.forEach((p) => {
+      if (!seen.has(p.pid) && (!keep || keep(p))) { seen.add(p.pid); out.push(p); }
+    });
+    await sleep(1100);
+  }
+  return out;
+}
 // ---------- end AliExpress ----------
 
 async function searchKeyword(key, q, size, keep) {
+  if (!USE_CJ) return []; // CJ is off
   const qs = new URLSearchParams({
     keyWord: q, page: '1', size: String(size || 20), countryCode: COUNTRY
   });
@@ -345,7 +379,7 @@ module.exports = function (app) {
   async function scanWinners(key) {
     const seen = new Set();
     const all = [];
-    for (const n of NICHES) {
+    for (const n of (USE_CJ ? NICHES : [])) {
       try {
         const found = await searchKeyword(key, n, 20);
         found.forEach((p) => { if (!seen.has(p.pid)) { seen.add(p.pid); all.push(p); } });
@@ -354,6 +388,7 @@ module.exports = function (app) {
       }
       await sleep(1100); // stay under CJ's request rate limit
     }
+    if (!all.length) (await aliFallback(NICHES)).forEach((p) => all.push(p)); // CJ blocked: use AliExpress
     all.sort((a, b) => b.score - a.score);
     db.saveProducts(all, 'winners scan').catch((e) => console.error('save failed:', e.message || e));
     const results = all.slice(0, 20).map(publicFields);
@@ -391,7 +426,7 @@ module.exports = function (app) {
     const perKeyword = Math.ceil(24 / words.length);
     const seen = new Set();
     const all = [];
-    for (const n of words) {
+    for (const n of (USE_CJ ? words : [])) {
       try {
         const found = await searchKeyword(key, n, 50, keep);
         found.sort((a, b) => b.score - a.score);
@@ -405,6 +440,7 @@ module.exports = function (app) {
       }
       await sleep(1100); // stay under CJ's request rate limit
     }
+    if (!all.length) (await aliFallback(words, keep)).forEach((p) => all.push(p)); // CJ blocked: use AliExpress
     all.sort((a, b) => b.score - a.score);
     db.saveProducts(all, seasonKey + ' winners scan').catch((e) => console.error('save failed:', e.message || e));
     const results = all.slice(0, 30).map(publicFields);
@@ -437,6 +473,16 @@ module.exports = function (app) {
   let trendingCache = null;
   app.get('/api/research/trending', requireCjKey, async (req, res) => {
     if (trendingCache && Date.now() - trendingCache.at < 6 * 3600 * 1000) return res.json({ results: trendingCache.results });
+    if (!USE_CJ) {
+      try {
+        const alt = (await aliFallback(NICHES)).sort((a, b) => b.score - a.score).slice(0, 30).map(publicFields);
+        if (alt.length) trendingCache = { at: Date.now(), results: alt };
+        return res.json({ results: alt, message: alt.length ? 'Top products from AliExpress.' : 'AliExpress returned no products. Check RAPIDAPI_KEY in Render.' });
+      } catch (e) {
+        console.error('AliExpress picks failed:', e.message || e);
+        return res.status(502).json({ error: e.message || 'AliExpress failed' });
+      }
+    }
     try {
       const qs = new URLSearchParams({ pageNum: '1', pageSize: '50', searchType: '2', countryCode: COUNTRY });
       const j = await cjCall(req.cjKey, '/product/list?' + qs.toString());
@@ -474,6 +520,10 @@ module.exports = function (app) {
       res.json({ results, message: results.length ? (rows.length > list.length ? (rows.length - list.length) + ' of ' + rows.length + ' CJ trending products were hidden (cost over $' + TREND_MAX_COST + ' or no price).' : 'CJ sent ' + rows.length + ' trending products.') : 'CJ returned no trending products under your cost limit.' });
     } catch (e) {
       console.error('trending failed:', e.message || e);
+      try {
+        const alt = (await aliFallback(NICHES)).sort((a, b) => b.score - a.score).slice(0, 30).map(publicFields);
+        if (alt.length) return res.json({ results: alt, message: 'CJ is blocked right now, so these are from AliExpress.' });
+      } catch (e2) { console.error('trending AliExpress fallback failed:', e2.message || e2); }
       res.status(502).json({ error: e.message || 'CJ trending failed' });
     }
   });
@@ -555,6 +605,14 @@ module.exports = function (app) {
     const ad = parseFloat(req.query.ad);
     if (!pid || !(sell > 0)) return res.json({ ok: false, error: 'Enter a selling price.' });
     const adCost = ad >= 0 ? ad : 0;
+    if (pid.startsWith('ali_')) {
+      // AliExpress product: cost comes from the card, shipping is a rough guess
+      const cost = parseFloat(req.query.cost);
+      if (!(cost > 0)) return res.json({ ok: false, error: 'Product cost is missing.' });
+      const fee = sell * FEE_PCT / 100 + FEE_FIXED;
+      const profit = sell - cost - EST_SHIPPING - fee - adCost;
+      return res.json({ ok: true, sell: round2(sell), cost: round2(cost), shipping: EST_SHIPPING, paymentFee: round2(fee), adCost: round2(adCost), profit: round2(profit), margin: Math.round(profit / sell * 1000) / 10, inStock: null });
+    }
     try {
       const d = await cjCall(req.cjKey, '/product/query?pid=' + encodeURIComponent(pid));
       const prod = d.data || {};
