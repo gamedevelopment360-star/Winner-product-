@@ -32,6 +32,8 @@ button:disabled{opacity:.5}
 .comp-Low{background:#2ecc71;color:#000}
 .comp-Medium{background:#f1c40f;color:#000}
 .comp-High{background:#e74c3c;color:#fff}
+.source-cj{background:#9b59b6;color:#fff}
+.source-ali{background:#e67e22;color:#000}
 .rise{background:#3498db;color:#000}
 .trendfan{background:#1abc9c;color:#000}
 .links{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
@@ -113,6 +115,11 @@ function compBadge(c) {
   return `<span class="badge comp-${c}">${c} competition</span>`;
 }
 
+function sourceBadge(source) {
+  if (source === "aliexpress") return `<span class="badge source-ali">AliExpress - order manually</span>`;
+  return `<span class="badge source-cj">CJ - auto-fulfilled</span>`;
+}
+
 function trendBadge(p) {
   return p.trending ? `<span class="badge trendfan">Trending</span>` : "";
 }
@@ -183,6 +190,7 @@ function render(j, label) {
         ${salesInfo(p)}
         <div>
           <span class="badge ${cls}">Score ${score === null ? "N/A" : score + "/100"}</span>
+          ${sourceBadge(p.source)}
           ${seasonBadge(p.seasonLabel)}
           ${compBadge(p.competition)}
           ${trendBadge(p)}
