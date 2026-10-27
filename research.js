@@ -313,20 +313,31 @@ module.exports = function (app) {
   app.get('/api/research', requireCjKey, async (req, res) => {
     const q = String(req.query.q || '').trim().slice(0, 80);
     if (!q) return res.status(400).json({ error: 'Type a keyword first.' });
-    try {
-      const [cjList, aliList] = await Promise.all([
-        searchKeyword(req.cjKey, q, 50),
-        searchAliExpress(q, 30),
-      ]);
-      const list = cjList.concat(aliList);
-      list.sort((a, b) => b.score - a.score);
-      db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
-      db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
-      res.json({ results: list.map(publicFields) });
-    } catch (e) {
-      console.error('research search failed:', e.message || e);
-      res.status(502).json({ error: e.message || 'CJ search failed' });
+    // Each source is independent: if CJ is blocked (or AliExpress is down),
+    // the other source's results still come back instead of the whole
+    // search failing.
+    const [cjResult, aliResult] = await Promise.allSettled([
+      searchKeyword(req.cjKey, q, 50),
+      searchAliExpress(q, 30),
+    ]);
+    const cjList = cjResult.status === 'fulfilled' ? cjResult.value : [];
+    const aliList = aliResult.status === 'fulfilled' ? aliResult.value : [];
+    if (cjResult.status === 'rejected') console.error('CJ search failed:', cjResult.reason?.message || cjResult.reason);
+    if (aliResult.status === 'rejected') console.error('AliExpress search failed:', aliResult.reason?.message || aliResult.reason);
+
+    const list = cjList.concat(aliList);
+    list.sort((a, b) => b.score - a.score);
+
+    if (!list.length) {
+      // Both sources failed (or found nothing) — this is the only time to
+      // show an error instead of an (empty) results list.
+      const err = cjResult.status === 'rejected' ? cjResult.reason : aliResult.status === 'rejected' ? aliResult.reason : null;
+      return res.status(502).json({ error: err?.message || 'No results from CJ or AliExpress.' });
     }
+
+    db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
+    db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
+    res.json({ results: list.map(publicFields), cjFailed: cjResult.status === 'rejected', aliFailed: aliResult.status === 'rejected' });
   });
 
   const scansRunning = new Map(); // cj key -> scan in progress, so taps in a row do not start many scans
