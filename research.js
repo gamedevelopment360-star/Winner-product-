@@ -1,12 +1,15 @@
-// research.js — product research for Winner Finder (CJ Dropshipping data).
+// research.js — product research for Winner Finder (CJ Dropshipping +
+// AliExpress data, merged together).
 // Routes (the password gate is in server.js; these use the CJ_API_KEY from the server):
-//   GET /api/research?q=keyword      search CJ, score each product
+//   GET /api/research?q=keyword      search CJ + AliExpress, score each product
 //   GET /api/research/winners        scan several niches, best score first
 //   GET /api/saved                   products saved in the database
-//   GET /api/research/profit?pid=&sell=&ad=   real shipping + stock + profit for one product
+//   GET /api/research/profit?pid=&sell=&ad=   real shipping + stock + profit for one product (CJ only)
 //
 // The score means "worth a small test", NOT "guaranteed profit".
-// AliExpress is not used yet. Add its signals later in scoreProduct().
+// Every product carries a "source" field ('cj' or 'aliexpress') since
+// fulfillment differs: CJ orders place automatically, AliExpress ones
+// currently need to be ordered by hand on aliexpress.com.
 
 // Standalone site: the CJ key comes from the CJ_API_KEY environment variable.
 function requireCjKey(req, res, next) {
@@ -191,7 +194,8 @@ function mapProduct(x, maxCost) {
     category: x.threeCategoryName || x.twoCategoryName || x.categoryName || '',
     listedBySellers: x.listedNum != null ? Number(x.listedNum) : null,
     stock: firstNum(x.warehouseInventoryNum != null ? x.warehouseInventoryNum : x.totalVerifiedInventory),
-    deliveryDays: firstNum(x.deliveryCycle)
+    deliveryDays: firstNum(x.deliveryCycle),
+    source: 'cj'
   };
   if (!p.pid) return null;
   p.suggestedPrice = suggestPrice(p.cost);
@@ -199,6 +203,64 @@ function mapProduct(x, maxCost) {
   p.seasonLabel = seasonInfo(p.name, p.category).label;
   return p;
 }
+
+// ---------- AliExpress (via RapidAPI's Aliexpress DataHub) ----------
+let aliDebugLogged = false; // only log the first raw result once, to confirm field names are right
+
+function mapAliProduct(x, maxCost) {
+  const limit = typeof maxCost === 'number' ? maxCost : MAX_COST;
+  const def = (x.sku && x.sku.def) || {};
+  const cost = firstNum(def.promotionPrice != null ? def.promotionPrice : def.price);
+  if (!cost || cost <= 0 || cost > limit) return null;
+  const itemId = x.itemId || x.productId || x.id;
+  if (!itemId) return null;
+  const p = {
+    pid: 'ali_' + itemId,
+    name: x.title || x.productTitle || 'Unnamed product',
+    image: x.image || x.imageUrl || '',
+    cost: round2(cost),
+    category: '',
+    // AliExpress gives a sold count, not a seller count — not the same
+    // signal as CJ's "listedBySellers", so left null rather than guessed.
+    listedBySellers: null,
+    stock: null,
+    deliveryDays: null,
+    source: 'aliexpress',
+    rating: x.averageStarRate != null ? Number(x.averageStarRate) : null,
+    sold: x.sales != null ? Number(x.sales) : null,
+  };
+  p.suggestedPrice = suggestPrice(p.cost);
+  p.score = scoreProduct(p);
+  p.seasonLabel = seasonInfo(p.name, p.category).label;
+  return p;
+}
+
+async function searchAliExpress(q, size) {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return []; // not configured — AliExpress results just won't appear, CJ still works
+  try {
+    const url = `https://aliexpress-datahub.p.rapidapi.com/item_search_2?q=${encodeURIComponent(q)}&page=1`;
+    const r = await fetch(url, {
+      headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'aliexpress-datahub.p.rapidapi.com' },
+    });
+    const j = await r.json();
+    const list = (j.result && j.result.resultList) || [];
+    if (!aliDebugLogged && list.length) {
+      console.log('[AliExpress DEBUG] First raw search item:', JSON.stringify(list[0]).slice(0, 1500));
+      aliDebugLogged = true;
+    }
+    const out = [];
+    list.forEach((block) => {
+      const p = mapAliProduct(block.item || block, typeof size === 'number' ? undefined : undefined);
+      if (p) out.push(p);
+    });
+    return onlyRelevant(out, q);
+  } catch (e) {
+    console.error('AliExpress search failed:', e.message || e);
+    return [];
+  }
+}
+// ---------- end AliExpress ----------
 
 async function searchKeyword(key, q, size, keep) {
   const qs = new URLSearchParams({
@@ -239,7 +301,8 @@ const publicFields = (p) => ({
   suggestedPrice: p.suggestedPrice, category: p.category,
   listedBySellers: p.listedBySellers == null ? '?' : p.listedBySellers,
   score: p.score, seasonLabel: p.seasonLabel || null,
-  competition: competitionOf(p.listedBySellers)
+  competition: competitionOf(p.listedBySellers),
+  source: p.source || 'cj'
 });
 
 // ---------- routes ----------
@@ -251,7 +314,11 @@ module.exports = function (app) {
     const q = String(req.query.q || '').trim().slice(0, 80);
     if (!q) return res.status(400).json({ error: 'Type a keyword first.' });
     try {
-      const list = await searchKeyword(req.cjKey, q, 50);
+      const [cjList, aliList] = await Promise.all([
+        searchKeyword(req.cjKey, q, 50),
+        searchAliExpress(q, 30),
+      ]);
+      const list = cjList.concat(aliList);
       list.sort((a, b) => b.score - a.score);
       db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
       db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
