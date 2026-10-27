@@ -62,7 +62,7 @@ Sales and growth scores are shown only when supported by data.
 <button id="win" style="flex:1">Find Winning Products</button>
 </div>
 <div class="bar">
-<button id="trend" style="flex:1;background:#f1c40f">CJ Trending</button>
+<button id="trend" style="flex:1;background:#f1c40f">AliExpress Picks</button>
 <button id="rise" style="flex:1;background:#3498db">Rising (new sellers)</button>
 </div>
 <div class="bar">
@@ -198,7 +198,7 @@ function render(j, label) {
         </div>
         ${confidence == null ? "" : `<div class="meta">Data confidence: ${esc(confidence)}</div>`}
         ${linksFor(p.name)}
-        <div class="pf" data-pid="${esc(pid)}">
+        <div class="pf" data-pid="${esc(pid)}" data-cost="${esc(p.cost)}">
           Sell $<input type="number" min="0.01" step="0.01" class="sell" value="${price === null ? "" : esc(price)}" aria-label="Selling price">
           Ads $<input type="number" min="0" step="0.01" class="ad" value="8" aria-label="Advertising cost per purchase">
           <button class="calc">Calculate profit</button>
@@ -286,7 +286,8 @@ document.addEventListener("click", async e => {
   try {
     const url = "/api/research/profit?pid=" + encodeURIComponent(box.dataset.pid) +
       "&sell=" + encodeURIComponent(sell) +
-      "&ad=" + encodeURIComponent(ad);
+      "&ad=" + encodeURIComponent(ad) +
+      "&cost=" + encodeURIComponent(box.dataset.cost || "");
     const r = await fetch(url, {headers:{"Accept":"application/json"}});
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.error || "Profit calculation failed");
@@ -314,7 +315,7 @@ document.addEventListener("click", async e => {
 $("win").addEventListener("click", winners);
 
 $("trend").addEventListener("click", () =>
-  load("/api/research/trending", "CJ trending products", "Loading trending products..."));
+  load("/api/research/trending", "AliExpress picks", "Loading trending products..."));
 
 $("rise").addEventListener("click", () =>
   load("/api/research/rising", "products gaining sellers (most first)",
