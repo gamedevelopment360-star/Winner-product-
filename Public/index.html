@@ -39,7 +39,8 @@ button:disabled{opacity:.5}
 .links{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
 .links a{padding:5px 9px;border-radius:8px;border:1px solid #444;color:#8cf;font-size:12px;text-decoration:none}
 .pf{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px}
-.pf input{width:75px;flex:1;padding:7px;font-size:13px}
+.pf input{flex:0 0 88px;width:88px;min-width:88px;padding:7px;font-size:13px}
+.why{margin-top:8px;font-size:12px;color:#c9ced8}.why summary{cursor:pointer;color:#8cf}.why ul{margin:6px 0 0;padding-left:18px}.why li{margin:2px 0}.why .flags{margin-top:6px;color:#f0a35e}.why .flags div{margin:2px 0}
 .pf button{padding:8px;font-size:12px}
 .res{font-size:12px;margin-top:6px;line-height:1.6;width:100%;overflow-wrap:anywhere}
 .good{color:#2ecc71}.bad{color:#e74c3c}
@@ -198,6 +199,7 @@ function render(j, label) {
           ${riseBadge(p)}
         </div>
         ${confidence == null ? "" : `<div class="meta">Data confidence: ${esc(confidence)}</div>`}
+        ${whyBlock(p)}
         ${linksFor(p.name)}
         <div class="pf" data-pid="${esc(pid)}" data-cost="${esc(p.cost)}">
           Sell $<input type="number" min="0.01" step="0.01" class="sell" value="${price === null ? "" : esc(price)}" aria-label="Selling price">
@@ -208,6 +210,23 @@ function render(j, label) {
       </div>
     </article>`;
   }).join("");
+}
+
+function whyBlock(p) {
+  const parts = Array.isArray(p.scoreParts) ? p.scoreParts : [];
+  const flags = Array.isArray(p.dataFlags) ? p.dataFlags : [];
+  if (!parts.length && !flags.length) return "";
+  const rows = parts.map((x) => {
+    const pts = Number(x.pts);
+    const sign = pts > 0 && !x.max ? "+" : "";
+    const of = x.max ? ` of ${x.max}` : "";
+    return `<li><b>${esc(x.label)}:</b> ${sign}${esc(pts)}${of}. ${esc(x.note || "")}</li>`;
+  }).join("");
+  const warn = flags.map((f) => `<div>⚠ ${esc(f)}</div>`).join("");
+  return `<details class="why"><summary>Why this score</summary>` +
+    (rows ? `<ul>${rows}</ul>` : "") +
+    (warn ? `<div class="flags">${warn}</div>` : "") +
+    `</details>`;
 }
 
 async function load(url, label, message) {
