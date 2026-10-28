@@ -247,6 +247,39 @@ function attachScore(p) {
   p.dataFlags = d.flags;
 }
 
+// Demand analysis (0-100) from what AliExpress really gives us: lifetime orders ("sold")
+// and star rating. It is NOT 30-day sales, and video engagement / review text are not
+// available from supplier data, so they are flagged instead of guessed.
+function demandDetail(p) {
+  const sold = p.sold == null ? null : firstNum(p.sold);
+  const rating = p.rating == null ? null : firstNum(p.rating);
+  const flags = [
+    'Sold = lifetime orders, not the last 30 days',
+    'Video engagement is not available from supplier data (use the TikTok and YouTube links)'
+  ];
+  const parts = [];
+  let pts = 0;
+  let max = 0;
+  if (sold != null) {
+    const sp = sold >= 5000 ? 50 : sold >= 1000 ? 40 : sold >= 200 ? 30 : sold >= 50 ? 20 : sold >= 10 ? 10 : 3;
+    pts += sp; max += 50;
+    parts.push({ label: 'Orders sold', pts: sp, max: 50, note: sold.toLocaleString() + ' orders so far' });
+  } else {
+    flags.push('Orders sold are unknown for this product');
+  }
+  if (rating != null) {
+    const rp = rating >= 4.7 ? 25 : rating >= 4.5 ? 20 : rating >= 4.2 ? 12 : rating >= 4.0 ? 6 : 0;
+    pts += rp; max += 25;
+    parts.push({ label: 'Rating', pts: rp, max: 25, note: rating.toFixed(1) + ' out of 5 stars' });
+  } else {
+    flags.push('Rating is unknown for this product');
+  }
+  if (!max) return { score: null, label: 'No demand data', parts, flags };
+  const score = Math.round((pts / max) * 100);
+  const label = score >= 75 ? 'Strong demand' : score >= 50 ? 'Some demand' : 'Weak demand';
+  return { score, label, parts, flags };
+}
+
 function mapProduct(x, maxCost) {
   const limit = typeof maxCost === 'number' ? maxCost : MAX_COST;
   const cost = firstNum(x.nowPrice != null ? x.nowPrice : x.sellPrice);
@@ -296,6 +329,7 @@ function mapAliProduct(x, maxCost) {
   };
   p.suggestedPrice = suggestPrice(p.cost);
   attachScore(p);
+  p.demand = demandDetail(p);
   p.seasonLabel = seasonInfo(p.name, p.category).label;
   return p;
 }
@@ -382,7 +416,8 @@ const publicFields = (p) => ({
   listedBySellers: p.listedBySellers == null ? '?' : p.listedBySellers,
   score: p.score, scoreParts: p.scoreParts || null, dataFlags: p.dataFlags || [], seasonLabel: p.seasonLabel || null,
   competition: competitionOf(p.listedBySellers),
-  source: p.source || 'cj'
+  source: p.source || 'cj',
+  sold: p.sold == null ? null : p.sold, rating: p.rating == null ? null : p.rating, demand: p.demand || null
 });
 
 // ---------- routes ----------
@@ -619,6 +654,20 @@ module.exports = function (app) {
     } catch (e) {
       console.error('rising failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read rising products' });
+    }
+  });
+
+  // Products whose lifetime orders grew over the last days (from saved daily history), with price change.
+  app.get('/api/research/demand', async (req, res) => {
+    if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so demand growth cannot be tracked.' });
+    try {
+      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST })).map((p) => ({
+        ...p, demand: demandDetail(p), competition: null, listedBySellers: '?', scoreParts: null, dataFlags: []
+      }));
+      res.json({ results, message: results.length ? '' : 'No demand growth yet. The site saves each AliExpress product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
+    } catch (e) {
+      console.error('demand failed:', e.message || e);
+      res.status(502).json({ error: e.message || 'Could not read demand growth' });
     }
   });
 
