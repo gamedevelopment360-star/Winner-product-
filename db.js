@@ -50,7 +50,12 @@ function init() {
         day DATE NOT NULL DEFAULT CURRENT_DATE,
         listed INTEGER NOT NULL,
         PRIMARY KEY (pid, day)
-      )`)).then(() => true).catch((e) => {
+      )`)).then(() => p.query(`ALTER TABLE snapshots ALTER COLUMN listed DROP NOT NULL`)
+      ).then(() => p.query(`ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS sold INTEGER`)
+      ).then(() => p.query(`ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS cost NUMERIC`)
+      ).then(() => p.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sold INTEGER`)
+      ).then(() => p.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS rating NUMERIC`)
+      ).then(() => true).catch((e) => {
         console.error('database setup failed:', e.message || e);
         ready = null;
         return false;
@@ -84,6 +89,22 @@ async function saveProducts(list, query) {
           `INSERT INTO snapshots (pid, day, listed) VALUES ($1, CURRENT_DATE, $2)
            ON CONFLICT (pid, day) DO UPDATE SET listed = EXCLUDED.listed`,
           [String(x.pid), Number(x.listedBySellers)]
+        );
+      }
+      // Demand history: lifetime orders ("sold"), rating and cost, saved once a day.
+      const soldN = Number(x.sold);
+      const hasSold = x.sold != null && Number.isFinite(soldN);
+      const ratingN = Number(x.rating);
+      const hasRating = x.rating != null && Number.isFinite(ratingN);
+      if (hasSold || hasRating) {
+        await p.query(`UPDATE products SET sold = COALESCE($2, sold), rating = COALESCE($3, rating) WHERE pid = $1`,
+          [String(x.pid), hasSold ? Math.round(soldN) : null, hasRating ? ratingN : null]);
+      }
+      if (hasSold && Number.isFinite(Number(x.cost))) {
+        await p.query(
+          `INSERT INTO snapshots (pid, day, listed, sold, cost) VALUES ($1, CURRENT_DATE, NULL, $2, $3)
+           ON CONFLICT (pid, day) DO UPDATE SET sold = EXCLUDED.sold, cost = EXCLUDED.cost`,
+          [String(x.pid), Math.round(soldN), Number(x.cost)]
         );
       }
       n++;
@@ -156,6 +177,44 @@ async function listRising(opts) {
   }));
 }
 
+// Products whose lifetime orders ("sold") grew over the last days, with the price change.
+// Needs saved history: a product shows here only after it was seen on 2+ different days.
+async function listDemand(opts) {
+  opts = opts || {};
+  if (!(await init())) throw new Error('Database is not set up.');
+  const limit = Math.min(Math.max(parseInt(opts.limit, 10) || 30, 1), 100);
+  const maxCost = opts.maxCost || 1e9;
+  const r = await getPool().query(
+    `WITH latest AS (
+       SELECT DISTINCT ON (pid) pid, day, sold, cost FROM snapshots WHERE sold IS NOT NULL ORDER BY pid, day DESC
+     ), base AS (
+       SELECT DISTINCT ON (s.pid) s.pid, s.day, s.sold, s.cost
+         FROM snapshots s JOIN latest l ON l.pid = s.pid
+        WHERE s.sold IS NOT NULL AND s.day <= l.day - 1 AND s.day >= l.day - 8
+        ORDER BY s.pid, s.day ASC
+     )
+     SELECT p.pid, p.name, p.image, p.cost, p.suggested_price, p.category, p.score, p.rating,
+            l.sold AS now_sold, b.sold AS then_sold, l.cost AS now_cost, b.cost AS then_cost, (l.day - b.day) AS days
+       FROM latest l
+       JOIN base b ON b.pid = l.pid
+       JOIN products p ON p.pid = l.pid
+      WHERE l.sold > b.sold AND p.cost <= $1
+      ORDER BY (l.sold - b.sold) DESC, p.score DESC
+      LIMIT $2`, [maxCost, limit]);
+  return r.rows.map((x) => ({
+    pid: x.pid, name: x.name, image: x.image,
+    cost: Number(x.cost), suggestedPrice: Number(x.suggested_price),
+    category: x.category, score: x.score,
+    rating: x.rating == null ? null : Number(x.rating),
+    sold: x.now_sold, soldGrowth: x.now_sold - x.then_sold,
+    soldGrowthPct: x.then_sold > 0 ? Math.round(((x.now_sold - x.then_sold) / x.then_sold) * 100) : null,
+    growthDays: Number(x.days),
+    costNow: x.now_cost == null ? null : Number(x.now_cost),
+    costThen: x.then_cost == null ? null : Number(x.then_cost),
+    source: String(x.pid).startsWith('ali_') ? 'aliexpress' : 'cj'
+  }));
+}
+
 async function saveSearch(query, results) {
   if (!enabled() || !query) return;
   if (!(await init())) return;
@@ -178,4 +237,4 @@ async function count() {
   return r.rows[0].n;
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, saveSearch, listSearches, count };
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, saveSearch, listSearches, count };
