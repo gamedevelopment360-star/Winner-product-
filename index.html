@@ -32,12 +32,15 @@ button:disabled{opacity:.5}
 .comp-Low{background:#2ecc71;color:#000}
 .comp-Medium{background:#f1c40f;color:#000}
 .comp-High{background:#e74c3c;color:#fff}
+.source-cj{background:#9b59b6;color:#fff}
+.source-ali{background:#e67e22;color:#000}
 .rise{background:#3498db;color:#000}
 .trendfan{background:#1abc9c;color:#000}
 .links{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
 .links a{padding:5px 9px;border-radius:8px;border:1px solid #444;color:#8cf;font-size:12px;text-decoration:none}
 .pf{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px}
-.pf input{width:75px;flex:1;padding:7px;font-size:13px}
+.pf input{flex:0 0 88px;width:88px;min-width:88px;padding:7px;font-size:13px}
+.why{margin-top:8px;font-size:12px;color:#c9ced8}.why summary{cursor:pointer;color:#8cf}.why ul{margin:6px 0 0;padding-left:18px}.why li{margin:2px 0}.why .flags{margin-top:6px;color:#f0a35e}.why .flags div{margin:2px 0}
 .pf button{padding:8px;font-size:12px}
 .res{font-size:12px;margin-top:6px;line-height:1.6;width:100%;overflow-wrap:anywhere}
 .good{color:#2ecc71}.bad{color:#e74c3c}
@@ -60,8 +63,9 @@ Sales and growth scores are shown only when supported by data.
 <button id="win" style="flex:1">Find Winning Products</button>
 </div>
 <div class="bar">
-<button id="trend" style="flex:1;background:#f1c40f">CJ Trending</button>
+<button id="trend" style="flex:1;background:#f1c40f">AliExpress Picks</button>
 <button id="rise" style="flex:1;background:#3498db">Rising (new sellers)</button>
+<button id="dem" style="flex:1;background:#e84393">Demand (orders growth)</button>
 </div>
 <div class="bar">
 <button class="season-btn" data-season="summer">Summer</button>
@@ -113,6 +117,11 @@ function compBadge(c) {
   return `<span class="badge comp-${c}">${c} competition</span>`;
 }
 
+function sourceBadge(source) {
+  if (source === "aliexpress") return `<span class="badge source-ali">AliExpress - order manually</span>`;
+  return `<span class="badge source-cj">CJ - auto-fulfilled</span>`;
+}
+
 function trendBadge(p) {
   return p.trending ? `<span class="badge trendfan">Trending</span>` : "";
 }
@@ -143,6 +152,32 @@ function salesInfo(p) {
   return `<div class="meta">${text}</div>${growthText}`;
 }
 
+function demandInfo(p) {
+  const d = p.demand;
+  const sold = numberOrNull(p.sold);
+  const rating = numberOrNull(p.rating);
+  const gain = numberOrNull(p.soldGrowth);
+  const days = numberOrNull(p.growthDays);
+  const cNow = numberOrNull(p.costNow), cThen = numberOrNull(p.costThen);
+  let out = "";
+  if (sold !== null || rating !== null) {
+    out += `<div class="meta">${sold !== null ? "Orders so far: " + sold.toLocaleString() : ""}${sold !== null && rating !== null ? " · " : ""}${rating !== null ? "Rating: " + rating.toFixed(1) + "/5" : ""}</div>`;
+  }
+  let badges = "";
+  if (d && d.score !== null && d.score !== undefined) {
+    const cls = d.score >= 75 ? "comp-Low" : d.score >= 50 ? "comp-Medium" : "comp-High";
+    badges += `<span class="badge ${cls}">${esc(d.label)} ${esc(d.score)}/100</span>`;
+  }
+  if (gain !== null && gain > 0) badges += `<span class="badge rise">+${gain.toLocaleString()} orders in ${days === null ? "a few" : days} day${days > 1 ? "s" : ""}</span>`;
+  if (cNow !== null && cThen !== null && Math.abs(cNow - cThen) >= 0.01) {
+    badges += cNow < cThen
+      ? `<span class="badge comp-Low">Cost down ${money(cThen)} → ${money(cNow)}</span>`
+      : `<span class="badge comp-High">Cost up ${money(cThen)} → ${money(cNow)}</span>`;
+  }
+  if (badges) out += `<div>${badges}</div>`;
+  return out;
+}
+
 function linksFor(name) {
   const q = encodeURIComponent(String(name || "").split(/\s+/).slice(0,5).join(" "));
   return `<div class="links">
@@ -167,7 +202,8 @@ function render(j, label) {
     const score = numberOrNull(p.score);
     const cls = score === null ? "neutral" :
       score >= 70 ? "hi" : score >= 45 ? "mid" : "lo";
-    const image = /^https?:\/\//i.test(p.image || "") ? esc(p.image) : "";
+    const rawImage = String(p.image || "").trim();
+    const image = esc(rawImage.startsWith("//") ? "https:" + rawImage : /^https?:\/\//i.test(rawImage) ? rawImage : "");
     const price = numberOrNull(p.suggestedPrice);
     const pid = String(p.pid ?? "");
     const confidence = p.confidence ?? p.dataConfidence;
@@ -181,16 +217,19 @@ function render(j, label) {
         <div class="meta">${esc(p.category || "Uncategorized")}</div>
         <div class="meta">Competing sellers: ${sellers === null ? "Unknown" : sellers}</div>
         ${salesInfo(p)}
+        ${demandInfo(p)}
         <div>
           <span class="badge ${cls}">Score ${score === null ? "N/A" : score + "/100"}</span>
+          ${sourceBadge(p.source)}
           ${seasonBadge(p.seasonLabel)}
           ${compBadge(p.competition)}
           ${trendBadge(p)}
           ${riseBadge(p)}
         </div>
         ${confidence == null ? "" : `<div class="meta">Data confidence: ${esc(confidence)}</div>`}
+        ${whyBlock(p)}
         ${linksFor(p.name)}
-        <div class="pf" data-pid="${esc(pid)}">
+        <div class="pf" data-pid="${esc(pid)}" data-cost="${esc(p.cost)}">
           Sell $<input type="number" min="0.01" step="0.01" class="sell" value="${price === null ? "" : esc(price)}" aria-label="Selling price">
           Ads $<input type="number" min="0" step="0.01" class="ad" value="8" aria-label="Advertising cost per purchase">
           <button class="calc">Calculate profit</button>
@@ -199,6 +238,28 @@ function render(j, label) {
       </div>
     </article>`;
   }).join("");
+}
+
+function whyBlock(p) {
+  const parts = (Array.isArray(p.scoreParts) ? p.scoreParts : []).slice();
+  const flags = (Array.isArray(p.dataFlags) ? p.dataFlags : []).slice();
+  const dm = p.demand && Array.isArray(p.demand.parts) ? p.demand : null;
+  if (dm && dm.parts.length) {
+    parts.push(...dm.parts.map((x) => ({ label: "Demand: " + x.label, pts: x.pts, max: x.max, note: x.note })));
+    (dm.flags || []).forEach((f) => flags.push(f));
+  }
+  if (!parts.length && !flags.length) return "";
+  const rows = parts.map((x) => {
+    const pts = Number(x.pts);
+    const sign = pts > 0 && !x.max ? "+" : "";
+    const of = x.max ? ` of ${x.max}` : "";
+    return `<li><b>${esc(x.label)}:</b> ${sign}${esc(pts)}${of}. ${esc(x.note || "")}</li>`;
+  }).join("");
+  const warn = flags.map((f) => `<div>⚠ ${esc(f)}</div>`).join("");
+  return `<details class="why"><summary>Why this score</summary>` +
+    (rows ? `<ul>${rows}</ul>` : "") +
+    (warn ? `<div class="flags">${warn}</div>` : "") +
+    `</details>`;
 }
 
 async function load(url, label, message) {
@@ -278,7 +339,8 @@ document.addEventListener("click", async e => {
   try {
     const url = "/api/research/profit?pid=" + encodeURIComponent(box.dataset.pid) +
       "&sell=" + encodeURIComponent(sell) +
-      "&ad=" + encodeURIComponent(ad);
+      "&ad=" + encodeURIComponent(ad) +
+      "&cost=" + encodeURIComponent(box.dataset.cost || "");
     const r = await fetch(url, {headers:{"Accept":"application/json"}});
     const j = await r.json();
     if (!r.ok || !j.ok) throw new Error(j.error || "Profit calculation failed");
@@ -306,11 +368,15 @@ document.addEventListener("click", async e => {
 $("win").addEventListener("click", winners);
 
 $("trend").addEventListener("click", () =>
-  load("/api/research/trending", "CJ trending products", "Loading trending products..."));
+  load("/api/research/trending", "AliExpress picks", "Loading trending products..."));
 
 $("rise").addEventListener("click", () =>
   load("/api/research/rising", "products gaining sellers (most first)",
     "Checking which products gained sellers..."));
+
+$("dem").addEventListener("click", () =>
+  load("/api/research/demand", "products with growing orders (most first)",
+    "Checking which products gained orders..."));
 
 document.querySelectorAll(".season-btn").forEach(btn => {
   btn.addEventListener("click", () => {
