@@ -420,6 +420,43 @@ const publicFields = (p) => ({
   sold: p.sold == null ? null : p.sold, rating: p.rating == null ? null : p.rating, demand: p.demand || null
 });
 
+// ---------- YouTube video demand (official YouTube Data API v3) ----------
+// Needs the YOUTUBE_API_KEY environment variable. One check = 1 search (100 units) + 1 lookup
+// (1 unit) out of the free 10,000 units a day, so results are kept for 12 hours.
+const ytCache = new Map(); // query -> { at, data }
+
+// Pure function: turns the raw video list into simple numbers (easy to test).
+function summarizeVideos(items) {
+  const now = Date.now();
+  const vids = (items || []).map((v) => {
+    const st = v.statistics || {};
+    const views = Number(st.viewCount) || 0;
+    const likes = Number(st.likeCount) || 0;
+    const comments = Number(st.commentCount) || 0;
+    return {
+      id: v.id, title: (v.snippet && v.snippet.title) || '', channel: (v.snippet && v.snippet.channelTitle) || '',
+      publishedAt: (v.snippet && v.snippet.publishedAt) || null,
+      views, likes, comments
+    };
+  });
+  if (!vids.length) return { videos: 0, totalViews: 0, avgViews: 0, recent90: 0, engagementPct: null, top: null, label: 'No videos found' };
+  const totalViews = vids.reduce((a, v) => a + v.views, 0);
+  const recent90 = vids.filter((v) => v.publishedAt && now - Date.parse(v.publishedAt) <= 90 * 86400000).length;
+  const withViews = vids.filter((v) => v.views > 0);
+  const eng = withViews.length
+    ? withViews.reduce((a, v) => a + (v.likes + v.comments) / v.views, 0) / withViews.length
+    : null;
+  const top = vids.slice().sort((a, b) => b.views - a.views)[0];
+  const avgViews = Math.round(totalViews / vids.length);
+  const label = avgViews >= 100000 ? 'Lots of video interest' : avgViews >= 10000 ? 'Some video interest' : 'Little video interest';
+  return {
+    videos: vids.length, totalViews, avgViews, recent90,
+    engagementPct: eng == null ? null : Math.round(eng * 1000) / 10,
+    top: { title: top.title, channel: top.channel, views: top.views, url: 'https://www.youtube.com/watch?v=' + top.id },
+    label
+  };
+}
+
 // ---------- routes ----------
 module.exports = function (app) {
   app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
@@ -654,6 +691,37 @@ module.exports = function (app) {
     } catch (e) {
       console.error('rising failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read rising products' });
+    }
+  });
+
+  // Video interest for one product from YouTube. /api/research/video?q=product name
+  app.get('/api/research/video', async (req, res) => {
+    const key = process.env.YOUTUBE_API_KEY;
+    if (!key) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set on the server.' });
+    const q = String(req.query.q || '').trim().split(/\s+/).slice(0, 5).join(' ').slice(0, 80);
+    if (!q) return res.status(400).json({ error: 'Add ?q=product name' });
+    const hit = ytCache.get(q.toLowerCase());
+    if (hit && Date.now() - hit.at < 12 * 3600 * 1000) return res.json({ ...hit.data, cached: true });
+    try {
+      const H = { 'x-goog-api-key': key };
+      const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=10&relevanceLanguage=en&q=' + encodeURIComponent(q);
+      const sj = await (await fetch(sUrl, { headers: H })).json();
+      if (sj.error) {
+        const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
+        const msg = why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
+        return res.status(502).json({ error: msg });
+      }
+      const ids = (sj.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
+      if (!ids.length) { const empty = { query: q, ...summarizeVideos([]) }; return res.json(empty); }
+      const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.join(',');
+      const vj = await (await fetch(vUrl, { headers: H })).json();
+      if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
+      const data = { query: q, ...summarizeVideos(vj.items || []) };
+      ytCache.set(q.toLowerCase(), { at: Date.now(), data });
+      res.json(data);
+    } catch (e) {
+      console.error('video check failed:', e.message || e);
+      res.status(502).json({ error: 'Could not reach YouTube.' });
     }
   });
 
