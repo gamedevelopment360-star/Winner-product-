@@ -174,7 +174,8 @@ function render(j, label) {
     const score = numberOrNull(p.score);
     const cls = score === null ? "neutral" :
       score >= 70 ? "hi" : score >= 45 ? "mid" : "lo";
-    const image = /^https?:\/\//i.test(p.image || "") ? esc(p.image) : "";
+    const rawImage = String(p.image || "").trim();
+    const image = esc(rawImage.startsWith("//") ? "https:" + rawImage : /^https?:\/\//i.test(rawImage) ? rawImage : "");
     const price = numberOrNull(p.suggestedPrice);
     const pid = String(p.pid ?? "");
     const confidence = p.confidence ?? p.dataConfidence;
