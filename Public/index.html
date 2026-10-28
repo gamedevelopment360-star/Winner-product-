@@ -405,7 +405,8 @@ document.addEventListener("click", async (e) => {
     if (!j.videos) { out.textContent = "No videos found for this product."; return; }
     const n = (x) => Number(x).toLocaleString();
     out.innerHTML = `<b>${esc(j.label)}</b><br>` +
-      `${j.videos} videos · ${n(j.totalViews)} total views · about ${n(j.avgViews)} per video<br>` +
+      `${j.videos} videos · typical video ${n(j.medianViews != null ? j.medianViews : j.avgViews)} views<br>` +
+      (j.topSharePct >= 40 ? `<span style="color:#fb4">One video is ${j.topSharePct}% of all views, so it is not counted as typical.</span><br>` : "") +
       `${j.recent90} posted in the last 90 days` +
       (j.engagementPct == null ? "" : ` · likes+comments about ${j.engagementPct}% of views`) +
       (j.top ? `<br>Top: <a target="_blank" rel="noopener noreferrer" href="${esc(j.top.url)}" style="color:#8cf">${esc(j.top.title)}</a> (${n(j.top.views)} views)` : "") +
