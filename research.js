@@ -424,11 +424,23 @@ const publicFields = (p) => ({
 // Needs the YOUTUBE_API_KEY environment variable. One check = 1 search (100 units) + 1 lookup
 // (1 unit) out of the free 10,000 units a day, so results are kept for 12 hours.
 const ytCache = new Map(); // query -> { at, data }
+const STOP_WORDS = new Set(['the','and','for','with','from','your','new','pcs','pack','set','style','type','mini','use','can','all','any']);
+
+// Middle value of a list (one viral video cannot move it).
+function median(nums) {
+  if (!nums.length) return 0;
+  const a = nums.slice().sort((x, y) => x - y);
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : Math.round((a[m - 1] + a[m]) / 2);
+}
 
 // Pure function: turns the raw video list into simple numbers (easy to test).
-function summarizeVideos(items) {
+// The label uses the MEDIAN video, so one viral video cannot make a product look popular.
+// If the search words are given, videos whose title shares none of them are left out
+// (unless that would leave fewer than 3 videos).
+function summarizeVideos(items, query) {
   const now = Date.now();
-  const vids = (items || []).map((v) => {
+  let vids = (items || []).map((v) => {
     const st = v.statistics || {};
     const views = Number(st.viewCount) || 0;
     const likes = Number(st.likeCount) || 0;
@@ -439,18 +451,26 @@ function summarizeVideos(items) {
       views, likes, comments
     };
   });
-  if (!vids.length) return { videos: 0, totalViews: 0, avgViews: 0, recent90: 0, engagementPct: null, top: null, label: 'No videos found' };
+  if (!vids.length) return { videos: 0, totalViews: 0, avgViews: 0, medianViews: 0, topSharePct: 0, recent90: 0, engagementPct: null, top: null, label: 'No videos found' };
+
+  let onTopic = null;
+  const words = String(query || '').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !STOP_WORDS.has(w));
+  if (words.length) {
+    const hits = vids.filter((v) => { const t = v.title.toLowerCase(); return words.some((w) => t.includes(w)); });
+    if (hits.length >= 3) { onTopic = hits.length; vids = hits; }
+  }
+
   const totalViews = vids.reduce((a, v) => a + v.views, 0);
   const recent90 = vids.filter((v) => v.publishedAt && now - Date.parse(v.publishedAt) <= 90 * 86400000).length;
   const withViews = vids.filter((v) => v.views > 0);
-  const eng = withViews.length
-    ? withViews.reduce((a, v) => a + (v.likes + v.comments) / v.views, 0) / withViews.length
-    : null;
+  const eng = withViews.length ? median(withViews.map((v) => (v.likes + v.comments) / v.views)) : null;
   const top = vids.slice().sort((a, b) => b.views - a.views)[0];
   const avgViews = Math.round(totalViews / vids.length);
-  const label = avgViews >= 100000 ? 'Lots of video interest' : avgViews >= 10000 ? 'Some video interest' : 'Little video interest';
+  const medianViews = median(vids.map((v) => v.views));
+  const topSharePct = totalViews ? Math.round(top.views / totalViews * 100) : 0;
+  const label = medianViews >= 100000 ? 'Lots of video interest' : medianViews >= 10000 ? 'Some video interest' : 'Little video interest';
   return {
-    videos: vids.length, totalViews, avgViews, recent90,
+    videos: vids.length, totalViews, avgViews, medianViews, topSharePct, recent90, onTopic,
     engagementPct: eng == null ? null : Math.round(eng * 1000) / 10,
     top: { title: top.title, channel: top.channel, views: top.views, url: 'https://www.youtube.com/watch?v=' + top.id },
     label
@@ -712,11 +732,11 @@ module.exports = function (app) {
         return res.status(502).json({ error: msg });
       }
       const ids = (sj.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
-      if (!ids.length) { const empty = { query: q, ...summarizeVideos([]) }; return res.json(empty); }
+      if (!ids.length) { const empty = { query: q, ...summarizeVideos([], q) }; return res.json(empty); }
       const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.join(',');
       const vj = await (await fetch(vUrl, { headers: H })).json();
       if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
-      const data = { query: q, ...summarizeVideos(vj.items || []) };
+      const data = { query: q, ...summarizeVideos(vj.items || [], q) };
       ytCache.set(q.toLowerCase(), { at: Date.now(), data });
       res.json(data);
     } catch (e) {
