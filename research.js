@@ -181,24 +181,70 @@ function suggestPrice(cost) {
 
 // 0-100. Points: margin 35, price band 15, stock 15, competition 20, delivery 15.
 // Cheaper products (selling price $20-$60) score best. Products with too little profit are pushed down.
-function scoreProduct(p) {
+// scoreDetail returns the total AND the reasons behind it, plus flags for missing or rough data.
+function scoreDetail(p) {
   const sell = p.suggestedPrice;
   const feeAmt = sell * FEE_PCT / 100 + FEE_FIXED;
   const before = sell - p.cost - EST_SHIPPING - feeAmt;
   const marginBeforeAds = before / sell;                 // ads still to come off
+  const parts = [];
+  const flags = [];
   let s = 0;
-  s += clamp((marginBeforeAds - 0.2) / 0.4, 0, 1) * 35;  // 20% -> 0 pts, 60% -> 35 pts
-  s += (sell >= 20 && sell <= 60) ? 15 : sell < 20 ? (sell >= 15 ? 7 : 0) : sell <= 90 ? 6 : 0;
+  const add = (label, pts, max, note) => {
+    s += pts;
+    parts.push({ label, pts: Math.round(pts * 10) / 10, max, note });
+  };
+
+  add('Profit margin', clamp((marginBeforeAds - 0.2) / 0.4, 0, 1) * 35, 35,
+    `About ${Math.round(marginBeforeAds * 100)}% before ads (20% scores 0, 60% or more scores full)`);
+
+  const bandPts = (sell >= 20 && sell <= 60) ? 15 : sell < 20 ? (sell >= 15 ? 7 : 0) : sell <= 90 ? 6 : 0;
+  add('Selling price range', bandPts, 15, `Suggested price $${sell} (best between $20 and $60)`);
+
   const stock = p.stock;
-  s += stock == null ? 5 : clamp(stock / 1000, 0, 1) * 15;
+  add('Stock', stock == null ? 5 : clamp(stock / 1000, 0, 1) * 15, 15,
+    stock == null ? 'Unknown, given a neutral score' : `${stock} units in stock`);
+  if (stock == null) flags.push('Stock is unknown');
+
   const sellers = p.listedBySellers;
-  s += sellers == null ? 8 : sellers < 50 ? 20 : sellers < 200 ? 14 : sellers < 500 ? 8 : 3;
+  add('Few competing sellers', sellers == null ? 8 : sellers < 50 ? 20 : sellers < 200 ? 14 : sellers < 500 ? 8 : 3, 20,
+    sellers == null ? 'Unknown, given a neutral score' : `${sellers} sellers already list it`);
+  if (sellers == null) flags.push('Number of competing sellers is unknown');
+
   const d = p.deliveryDays;
-  s += d == null ? 6 : d <= 8 ? 15 : d <= 12 ? 10 : d <= 16 ? 4 : 0;
-  if (before < MIN_PROFIT) s *= 0.6;                     // not enough money left per sale
-  if (sell > 90) s *= 0.75;                              // costly items sell less and risk more
-  s += seasonInfo(p.name, p.category).bonus;             // nudge for products with a known peak season
-  return Math.round(clamp(s, 0, 100));
+  add('Delivery time', d == null ? 6 : d <= 8 ? 15 : d <= 12 ? 10 : d <= 16 ? 4 : 0, 15,
+    d == null ? 'Unknown, given a neutral score' : `About ${d} days`);
+  if (d == null) flags.push('Delivery time is unknown');
+
+  if (before < MIN_PROFIT) {
+    const old = s; s *= 0.6;
+    parts.push({ label: 'Low profit penalty', pts: Math.round((s - old) * 10) / 10, max: 0,
+      note: `Less than $${MIN_PROFIT} left per sale before ads` });
+  }
+  if (sell > 90) {
+    const old = s; s *= 0.75;
+    parts.push({ label: 'High price penalty', pts: Math.round((s - old) * 10) / 10, max: 0,
+      note: 'Costly items sell less and carry more risk' });
+  }
+  const season = seasonInfo(p.name, p.category);
+  if (season.bonus) {
+    s += season.bonus;
+    parts.push({ label: 'Season', pts: season.bonus, max: 0, note: `${season.label} (a keyword guess, not real sales data)` });
+  }
+
+  flags.push(`Shipping is a rough guess ($${EST_SHIPPING}) until you tap Calculate profit`);
+  flags.push('Suggested price is a formula, not a real market price');
+  flags.push('30-day sales history is not available');
+  if (p.source === 'aliexpress') flags.push('AliExpress data: orders must be placed by hand, with no live stock or shipping quote');
+
+  return { total: Math.round(clamp(s, 0, 100)), parts, flags };
+}
+function scoreProduct(p) { return scoreDetail(p).total; }
+function attachScore(p) {
+  const d = scoreDetail(p);
+  p.score = d.total;
+  p.scoreParts = d.parts;
+  p.dataFlags = d.flags;
 }
 
 function mapProduct(x, maxCost) {
@@ -218,7 +264,7 @@ function mapProduct(x, maxCost) {
   };
   if (!p.pid) return null;
   p.suggestedPrice = suggestPrice(p.cost);
-  p.score = scoreProduct(p);
+  attachScore(p);
   p.seasonLabel = seasonInfo(p.name, p.category).label;
   return p;
 }
@@ -249,7 +295,7 @@ function mapAliProduct(x, maxCost) {
     sold: x.sales != null ? Number(x.sales) : null,
   };
   p.suggestedPrice = suggestPrice(p.cost);
-  p.score = scoreProduct(p);
+  attachScore(p);
   p.seasonLabel = seasonInfo(p.name, p.category).label;
   return p;
 }
@@ -334,7 +380,7 @@ const publicFields = (p) => ({
   pid: p.pid, name: p.name, image: p.image, cost: p.cost,
   suggestedPrice: p.suggestedPrice, category: p.category,
   listedBySellers: p.listedBySellers == null ? '?' : p.listedBySellers,
-  score: p.score, seasonLabel: p.seasonLabel || null,
+  score: p.score, scoreParts: p.scoreParts || null, dataFlags: p.dataFlags || [], seasonLabel: p.seasonLabel || null,
   competition: competitionOf(p.listedBySellers),
   source: p.source || 'cj'
 });
