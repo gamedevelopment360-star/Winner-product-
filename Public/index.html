@@ -65,6 +65,7 @@ Sales and growth scores are shown only when supported by data.
 <div class="bar">
 <button id="trend" style="flex:1;background:#f1c40f">AliExpress Picks</button>
 <button id="rise" style="flex:1;background:#3498db">Rising (new sellers)</button>
+<button id="dem" style="flex:1;background:#e84393">Demand (orders growth)</button>
 </div>
 <div class="bar">
 <button class="season-btn" data-season="summer">Summer</button>
@@ -151,6 +152,32 @@ function salesInfo(p) {
   return `<div class="meta">${text}</div>${growthText}`;
 }
 
+function demandInfo(p) {
+  const d = p.demand;
+  const sold = numberOrNull(p.sold);
+  const rating = numberOrNull(p.rating);
+  const gain = numberOrNull(p.soldGrowth);
+  const days = numberOrNull(p.growthDays);
+  const cNow = numberOrNull(p.costNow), cThen = numberOrNull(p.costThen);
+  let out = "";
+  if (sold !== null || rating !== null) {
+    out += `<div class="meta">${sold !== null ? "Orders so far: " + sold.toLocaleString() : ""}${sold !== null && rating !== null ? " · " : ""}${rating !== null ? "Rating: " + rating.toFixed(1) + "/5" : ""}</div>`;
+  }
+  let badges = "";
+  if (d && d.score !== null && d.score !== undefined) {
+    const cls = d.score >= 75 ? "comp-Low" : d.score >= 50 ? "comp-Medium" : "comp-High";
+    badges += `<span class="badge ${cls}">${esc(d.label)} ${esc(d.score)}/100</span>`;
+  }
+  if (gain !== null && gain > 0) badges += `<span class="badge rise">+${gain.toLocaleString()} orders in ${days === null ? "a few" : days} day${days > 1 ? "s" : ""}</span>`;
+  if (cNow !== null && cThen !== null && Math.abs(cNow - cThen) >= 0.01) {
+    badges += cNow < cThen
+      ? `<span class="badge comp-Low">Cost down ${money(cThen)} → ${money(cNow)}</span>`
+      : `<span class="badge comp-High">Cost up ${money(cThen)} → ${money(cNow)}</span>`;
+  }
+  if (badges) out += `<div>${badges}</div>`;
+  return out;
+}
+
 function linksFor(name) {
   const q = encodeURIComponent(String(name || "").split(/\s+/).slice(0,5).join(" "));
   return `<div class="links">
@@ -190,6 +217,7 @@ function render(j, label) {
         <div class="meta">${esc(p.category || "Uncategorized")}</div>
         <div class="meta">Competing sellers: ${sellers === null ? "Unknown" : sellers}</div>
         ${salesInfo(p)}
+        ${demandInfo(p)}
         <div>
           <span class="badge ${cls}">Score ${score === null ? "N/A" : score + "/100"}</span>
           ${sourceBadge(p.source)}
@@ -213,8 +241,13 @@ function render(j, label) {
 }
 
 function whyBlock(p) {
-  const parts = Array.isArray(p.scoreParts) ? p.scoreParts : [];
-  const flags = Array.isArray(p.dataFlags) ? p.dataFlags : [];
+  const parts = (Array.isArray(p.scoreParts) ? p.scoreParts : []).slice();
+  const flags = (Array.isArray(p.dataFlags) ? p.dataFlags : []).slice();
+  const dm = p.demand && Array.isArray(p.demand.parts) ? p.demand : null;
+  if (dm && dm.parts.length) {
+    parts.push(...dm.parts.map((x) => ({ label: "Demand: " + x.label, pts: x.pts, max: x.max, note: x.note })));
+    (dm.flags || []).forEach((f) => flags.push(f));
+  }
   if (!parts.length && !flags.length) return "";
   const rows = parts.map((x) => {
     const pts = Number(x.pts);
@@ -340,6 +373,10 @@ $("trend").addEventListener("click", () =>
 $("rise").addEventListener("click", () =>
   load("/api/research/rising", "products gaining sellers (most first)",
     "Checking which products gained sellers..."));
+
+$("dem").addEventListener("click", () =>
+  load("/api/research/demand", "products with growing orders (most first)",
+    "Checking which products gained orders..."));
 
 document.querySelectorAll(".season-btn").forEach(btn => {
   btn.addEventListener("click", () => {
