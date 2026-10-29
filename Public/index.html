@@ -59,6 +59,9 @@ body.locked .bar,body.locked #recent,body.locked #wincount{display:none}
 .verdict i{display:block;margin-top:3px;font-size:12px;opacity:.85}
 body.onlywin .card:not([data-v="win"]){display:none}
 #wincount{padding:0 16px 8px;font-size:13px;color:#c9ced8}
+.yt{display:flex;gap:12px;background:#1a1d24;border:1px solid #292d36;border-radius:12px;padding:10px;min-width:0}
+.yt img{width:128px;height:72px;flex-shrink:0;object-fit:cover;border-radius:8px;background:#222}
+@media(max-width:380px){.yt img{width:96px;height:54px}}
 </style>
 </head>
 <body>
@@ -95,7 +98,7 @@ Sales and growth scores are shown only when supported by data.
 </div>
 
 <div class="bar">
-<button id="win" style="flex:1">Find Winning Products</button>
+<button id="ytTrend" style="flex:1;background:#ff4d4d;color:#fff">Trending Products (YouTube videos)</button>
 </div>
 <div class="bar">
 <button id="trend" style="flex:1;background:#f1c40f">AliExpress Picks</button>
@@ -407,8 +410,8 @@ function whyBlock(p) {
 
 async function load(url, label, message) {
   const id = ++requestNumber;
-  // "Find Winning Products" shows only WINNER cards. Every other button shows all products.
-  document.body.classList.toggle("onlywin", url === "/api/research/winners");
+  // Only WINNER products are shown. TEST IT and SKIP products stay hidden.
+  document.body.classList.add("onlywin");
   $("status").textContent = message;
   $("out").innerHTML = "";
 
@@ -608,7 +611,35 @@ $("acct").addEventListener("click", e => {
   }
 })();
 
-$("win").addEventListener("click", winners);
+$("ytTrend").addEventListener("click", async () => {
+  const b = $("ytTrend");
+  autoToken++; // stop any automatic video checks still running
+  b.disabled = true;
+  $("wincount").textContent = "";
+  $("out").innerHTML = "";
+  $("status").textContent = "Loading trending product videos from YouTube...";
+  try {
+    const r = await fetch("/api/research/youtube-trending");
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || "Could not load videos");
+    const list = j.videos || [];
+    if (!list.length) { $("status").textContent = "No trending product videos found right now."; return; }
+    const n = (x) => Number(x).toLocaleString();
+    $("status").textContent = `${list.length} trending product videos (last 30 days, fastest growing first). Views show interest, not sales.`;
+    $("out").innerHTML = list.map((v) => `<article class="yt">
+      <a target="_blank" rel="noopener noreferrer" href="${esc(v.url)}"><img src="${esc(v.thumb)}" alt="" loading="lazy"></a>
+      <div class="details">
+        <div class="name"><a target="_blank" rel="noopener noreferrer" href="${esc(v.url)}" style="color:#8cf;text-decoration:none">${esc(v.title)}</a></div>
+        <div class="meta">${esc(v.channel)}</div>
+        <div class="meta">${n(v.views)} views · about ${n(v.viewsPerDay)} per day${v.publishedAt ? " · " + esc(String(v.publishedAt).slice(0, 10)) : ""}</div>
+      </div>
+    </article>`).join("");
+  } catch (err) {
+    $("status").textContent = err.message;
+  } finally {
+    b.disabled = false;
+  }
+});
 
 $("trend").addEventListener("click", () =>
   load("/api/research/trending", "AliExpress picks", "Loading trending products..."));
