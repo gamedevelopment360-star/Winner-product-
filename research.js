@@ -725,34 +725,72 @@ module.exports = function (app) {
     try {
       const H = { 'x-goog-api-key': key };
       const since = new Date(Date.now() - 30 * 86400000).toISOString();
-      const q = 'trending products ' + new Date().getFullYear();
-      const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&order=viewCount&relevanceLanguage=en&publishedAfter='
-        + encodeURIComponent(since) + '&q=' + encodeURIComponent(q);
-      const sj = await (await fetch(sUrl, { headers: H })).json();
-      if (sj.error) {
-        const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
-        const msg = why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
-        return res.status(502).json({ error: msg });
+      // Separate lists by product type. One search per type (100 units each); the whole result is kept 6 hours.
+      const CATS = [
+        { name: 'Pets', q: 'viral pet product tiktok made me buy it' },
+        { name: 'Kitchen', q: 'viral kitchen gadget tiktok made me buy it' },
+        { name: 'Car', q: 'viral car accessories gadget you need' },
+        { name: 'Fitness', q: 'viral fitness gadget home workout' },
+        { name: 'Beauty', q: 'viral beauty tool tiktok made me buy it' },
+        { name: 'Home & LED', q: 'viral home gadget led lights tiktok' }
+      ];
+      const found = []; // { cat, id }
+      let lastErr = null;
+      for (const c of CATS) {
+        const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=25&order=viewCount&relevanceLanguage=en&publishedAfter='
+          + encodeURIComponent(since) + '&q=' + encodeURIComponent(c.q);
+        const sj = await (await fetch(sUrl, { headers: H })).json();
+        if (sj.error) {
+          const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
+          lastErr = why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
+          break;
+        }
+        (sj.items || []).forEach((i) => { if (i.id && i.id.videoId) found.push({ cat: c.name, id: i.id.videoId }); });
       }
-      const ids = (sj.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
-      if (!ids.length) return res.json({ videos: [] });
-      const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.join(',');
-      const vj = await (await fetch(vUrl, { headers: H })).json();
-      if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
+      if (lastErr && !found.length) return res.status(502).json({ error: lastErr });
+      const ids = Array.from(new Set(found.map((f) => f.id)));
+      if (!ids.length) return res.json({ videos: [], groups: [] });
+      const items = [];
+      for (let i = 0; i < ids.length; i += 50) {
+        const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.slice(i, i + 50).join(',');
+        const vj = await (await fetch(vUrl, { headers: H })).json();
+        if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
+        (vj.items || []).forEach((v) => items.push(v));
+      }
       const now = Date.now();
-      const videos = (vj.items || []).map((v) => {
+      const byId = {};
+      items.forEach((v) => {
         const sn = v.snippet || {};
         const views = Number((v.statistics || {}).viewCount) || 0;
         const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
         const th = sn.thumbnails || {};
-        return {
+        byId[v.id] = {
           id: v.id, title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
           views, viewsPerDay: Math.round(views / ageDays),
           thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
           url: 'https://www.youtube.com/watch?v=' + v.id
         };
-      }).sort((a, b) => b.viewsPerDay - a.viewsPerDay).slice(0, 12);
-      const data = { videos };
+      });
+      // leave out lists, compilations and hauls (many products in one video); keep them only if too few remain
+      const LISTY = /\btop\s*\d+|\bbest\s*\d+|\b\d+\s+(best|products|gadgets|items|things|finds)|compilation|collection|\bhaul\b|\bvs\b/i;
+      const used = new Set();
+      const groups = [];
+      for (const c of CATS) {
+        let list = found.filter((f) => f.cat === c.name).map((f) => byId[f.id]).filter((v) => v && !used.has(v.id));
+        const single = list.filter((v) => !LISTY.test(v.title));
+        if (single.length >= 3) list = single;
+        const perChannel = {};
+        list = list.sort((a, b) => b.viewsPerDay - a.viewsPerDay).filter((v) => {
+          perChannel[v.channel] = (perChannel[v.channel] || 0) + 1;
+          return perChannel[v.channel] <= 1; // one video per channel in each list
+        }).slice(0, 5);
+        list.forEach((v) => used.add(v.id));
+        if (list.length) groups.push({ name: c.name, videos: list });
+      }
+      // "videos" is the same list flattened (list name in front of the channel), so the page shows it even without list headers
+      const videos = [];
+      groups.forEach((g) => g.videos.forEach((v) => videos.push({ ...v, channel: g.name + ' · ' + v.channel })));
+      const data = { videos, groups };
       trendVideos.at = Date.now(); trendVideos.data = data;
       res.json(data);
     } catch (e) {
