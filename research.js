@@ -20,6 +20,7 @@ function requireCjKey(req, res, next) {
 }
 
 const db = require('./db');
+const { productFromTitle } = require('./titlefilter');
 
 const BASE = 'https://developers.cjdropshipping.com/api2.0/v1';
 const COUNTRY = (process.env.RESEARCH_COUNTRY || 'US').toUpperCase();
@@ -460,6 +461,12 @@ function summarizeVideos(items, query) {
     if (hits.length >= 3) { onTopic = hits.length; vids = hits; }
   }
 
+  // Keep only videos whose title names a product (drops videos like "what is a skin tag?").
+  // If fewer than 3 videos name a product, keep them all.
+  let namesProduct = null;
+  const named = vids.filter((v) => productFromTitle(v.title));
+  if (named.length >= 3) { namesProduct = named.length; vids = named; }
+
   const totalViews = vids.reduce((a, v) => a + v.views, 0);
   const recent90 = vids.filter((v) => v.publishedAt && now - Date.parse(v.publishedAt) <= 90 * 86400000).length;
   const withViews = vids.filter((v) => v.views > 0);
@@ -470,7 +477,7 @@ function summarizeVideos(items, query) {
   const topSharePct = totalViews ? Math.round(top.views / totalViews * 100) : 0;
   const label = medianViews >= 100000 ? 'Lots of video interest' : medianViews >= 10000 ? 'Some video interest' : 'Little video interest';
   return {
-    videos: vids.length, totalViews, avgViews, medianViews, topSharePct, recent90, onTopic,
+    videos: vids.length, totalViews, avgViews, medianViews, topSharePct, recent90, onTopic, namesProduct,
     engagementPct: eng == null ? null : Math.round(eng * 1000) / 10,
     top: { title: top.title, channel: top.channel, views: top.views, url: 'https://www.youtube.com/watch?v=' + top.id },
     label
