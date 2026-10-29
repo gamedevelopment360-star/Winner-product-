@@ -714,6 +714,53 @@ module.exports = function (app) {
     }
   });
 
+  // Trending product videos from YouTube: videos from the last 30 days about trending products,
+  // sorted by views per day. One check = 1 search (100 units) + 1 lookup (1 unit) of the free
+  // 10,000 units a day, so the list is kept for 6 hours.
+  const trendVideos = { at: 0, data: null };
+  app.get('/api/research/youtube-trending', async (req, res) => {
+    const key = process.env.YOUTUBE_API_KEY;
+    if (!key) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set on the server.' });
+    if (trendVideos.data && Date.now() - trendVideos.at < 6 * 3600 * 1000) return res.json({ ...trendVideos.data, cached: true });
+    try {
+      const H = { 'x-goog-api-key': key };
+      const since = new Date(Date.now() - 30 * 86400000).toISOString();
+      const q = 'trending products ' + new Date().getFullYear();
+      const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&order=viewCount&relevanceLanguage=en&publishedAfter='
+        + encodeURIComponent(since) + '&q=' + encodeURIComponent(q);
+      const sj = await (await fetch(sUrl, { headers: H })).json();
+      if (sj.error) {
+        const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
+        const msg = why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
+        return res.status(502).json({ error: msg });
+      }
+      const ids = (sj.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
+      if (!ids.length) return res.json({ videos: [] });
+      const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.join(',');
+      const vj = await (await fetch(vUrl, { headers: H })).json();
+      if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
+      const now = Date.now();
+      const videos = (vj.items || []).map((v) => {
+        const sn = v.snippet || {};
+        const views = Number((v.statistics || {}).viewCount) || 0;
+        const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
+        const th = sn.thumbnails || {};
+        return {
+          id: v.id, title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
+          views, viewsPerDay: Math.round(views / ageDays),
+          thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
+          url: 'https://www.youtube.com/watch?v=' + v.id
+        };
+      }).sort((a, b) => b.viewsPerDay - a.viewsPerDay).slice(0, 12);
+      const data = { videos };
+      trendVideos.at = Date.now(); trendVideos.data = data;
+      res.json(data);
+    } catch (e) {
+      console.error('trending videos failed:', e.message || e);
+      res.status(502).json({ error: 'Could not reach YouTube.' });
+    }
+  });
+
   // Video interest for one product from YouTube. /api/research/video?q=product name
   app.get('/api/research/video', async (req, res) => {
     const key = process.env.YOUTUBE_API_KEY;
