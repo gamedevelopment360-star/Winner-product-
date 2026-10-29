@@ -43,11 +43,23 @@ button:disabled{opacity:.5}
 .why{margin-top:8px;font-size:12px;color:#c9ced8}.why summary{cursor:pointer;color:#8cf}.why ul{margin:6px 0 0;padding-left:18px}.why li{margin:2px 0}.why .flags{margin-top:6px;color:#f0a35e}.why .flags div{margin:2px 0}
 .pf button{padding:8px;font-size:12px}
 .res{font-size:12px;margin-top:6px;line-height:1.6;width:100%;overflow-wrap:anywhere}
+.arow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.arow button{flex:1}
+.authbox input{display:block;width:100%;margin-top:8px}
+body.locked .bar,body.locked #recent,body.locked #wincount{display:none}
+#acct{padding:0 16px 8px;font-size:12px;color:#9aa;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+#acct button{padding:6px 10px;font-size:12px}
 .good{color:#2ecc71}.bad{color:#e74c3c}
 .chip{margin:0 5px 5px 0;padding:6px 10px;background:#1a1d24;border:1px solid #333;color:#eee;font-weight:400}
 .notice{margin:0 16px 12px;padding:10px;border:1px solid #444;border-radius:10px;color:#b8c4d5;font-size:12px;line-height:1.5}
 @media(max-width:380px){.card img{width:76px;height:76px}.card{gap:8px;padding:8px}.bar button{padding:10px;font-size:12px}}
-.vbox{margin-top:8px}.vbox button{padding:6px 10px;font-size:13px}.vres{margin-top:6px;font-size:13px;line-height:1.5}</style>
+.vbox{margin-top:8px}.vbox button{padding:6px 10px;font-size:13px}.vres{margin-top:6px;font-size:13px;line-height:1.5}.verdict{display:block;margin:6px 0 8px;padding:9px 11px;border-radius:10px;font-size:13px;line-height:1.45}
+.verdict b{display:block;font-size:18px;letter-spacing:.02em;margin-bottom:2px}
+.v-win{background:#2ecc71;color:#06260f}.v-test{background:#f1c40f;color:#2b2300}.v-skip{background:#3a2020;color:#f5b7b1;border:1px solid #6b2b2b}
+.verdict i{display:block;margin-top:3px;font-size:12px;opacity:.85}
+body.onlywin .card:not([data-v="win"]){display:none}
+#wincount{padding:0 16px 8px;font-size:13px;color:#c9ced8}
+</style>
 </head>
 <body>
 
@@ -57,6 +69,29 @@ button:disabled{opacity:.5}
 <div class="notice">
 Sales verification matters: seller counts, views and likes are not the same as units sold.
 Sales and growth scores are shown only when supported by data.
+</div>
+
+<div id="acct" hidden></div>
+
+<div id="authbox" class="notice authbox" hidden>
+  <b>Log in or create an account</b>
+  <input id="authEmail" type="email" placeholder="Email" autocomplete="email">
+  <input id="authPass" type="password" placeholder="Password (8 or more characters)" autocomplete="current-password">
+  <div class="arow">
+    <button id="authLogin">Log in</button>
+    <button id="authSignup" class="season-btn">Create account</button>
+  </div>
+  <div id="authMsg" class="meta"></div>
+</div>
+
+<div id="subbox" class="notice" hidden>
+  <b>Subscribe to use Winner Finder</b>
+  <div class="meta" id="priceText"></div>
+  <div class="arow">
+    <button id="subBtn">Subscribe</button>
+    <button id="subLogout" class="season-btn">Log out</button>
+  </div>
+  <div id="subMsg" class="meta"></div>
 </div>
 
 <div class="bar">
@@ -80,6 +115,7 @@ Sales and growth scores are shown only when supported by data.
 <button id="go">Search</button>
 </div>
 
+<div id="wincount"></div>
 <div id="recent" style="padding:0 16px 8px"></div>
 <div id="status" aria-live="polite">Choose a research option to begin.</div>
 <div id="out"></div>
@@ -187,6 +223,109 @@ function linksFor(name) {
   </div>`;
 }
 
+// ---------- WINNER / TEST IT / SKIP verdict ----------
+// WINNER needs all three: good profit, proven orders, and people watching videos.
+const MIN_PROFIT_WIN = 8;      // dollars per sale
+const MIN_ORDERS_WIN = 200;    // lifetime orders shown by AliExpress
+const MIN_VIDEO_VIEWS = 10000; // typical video views
+
+function verdictFor(art) {
+  const cost = numberOrNull(art.dataset.cost);
+  const price = numberOrNull(art.dataset.price);
+  const sold = numberOrNull(art.dataset.sold);
+  const adBox = art.querySelector(".ad");
+  const ad = adBox && numberOrNull(adBox.value) !== null ? numberOrNull(adBox.value) : 8;
+  const sellBox = art.querySelector(".sell");
+  const sell = sellBox && numberOrNull(sellBox.value) !== null ? numberOrNull(sellBox.value) : price;
+  let profit = null, real = false;
+  if (art.dataset.realProfit !== undefined && art.dataset.realProfit !== "") {
+    profit = numberOrNull(art.dataset.realProfit); real = profit !== null;
+  }
+  if (profit === null && cost !== null && sell !== null) {
+    profit = sell - cost - (sell * 0.029 + 0.3) - ad;
+  }
+  let video = null;
+  try { video = art.dataset.video ? JSON.parse(art.dataset.video) : null; } catch (_) {}
+
+  const profitOK = profit !== null && profit >= MIN_PROFIT_WIN;
+  const ordersKnown = sold !== null && sold > 0; // 0 usually means "not shown"
+  const ordersOK = ordersKnown && sold >= MIN_ORDERS_WIN;
+  const videoChecked = video !== null;
+  const videoOK = videoChecked && video.videos > 0 && video.median >= MIN_VIDEO_VIEWS && video.recent90 >= 1;
+
+  const lines = [];
+  if (profit === null) lines.push("Profit: unknown");
+  else if (profit <= 0) lines.push("You would lose about " + money(Math.abs(profit)) + " per sale");
+  else lines.push("You make about " + money(profit) + " per sale" + (real ? "" : " (estimate, before shipping)"));
+  lines.push(ordersKnown ? sold.toLocaleString() + " orders" : "Orders: not shown by AliExpress");
+  lines.push(!videoChecked ? "Videos: not checked yet"
+    : video.videos === 0 ? "No videos found"
+    : videoOK ? "People watch videos about it" : "Few video views");
+
+  let v = "test", head = "TEST IT", note = "Promising but not proven. Try a small test first.";
+  if (profit !== null && profit < 3) { v = "skip"; head = "SKIP"; note = "Too little profit after costs."; }
+  else if (ordersKnown && sold < 10) { v = "skip"; head = "SKIP"; note = "Almost nobody has bought it."; }
+  else if (profitOK && ordersOK && videoOK) { v = "win"; head = "WINNER"; note = "Numbers look strong. Still test with a small budget."; }
+  else {
+    const missing = [];
+    if (!profitOK) missing.push("more profit");
+    if (!ordersOK) missing.push(ordersKnown ? "more orders" : "proof of orders");
+    if (!videoOK) missing.push(videoChecked ? "more video interest" : "a video check");
+    note = "Missing: " + missing.join(", ") + ".";
+  }
+  return { v, head, text: lines.join(" · "), note };
+}
+
+function refreshVerdict(art) {
+  const box = art.querySelector(".verdict");
+  if (!box) return;
+  const r = verdictFor(art);
+  art.dataset.v = r.v;
+  box.className = "verdict v-" + r.v;
+  box.innerHTML = `<b>${esc(r.head)}</b>${esc(r.text)}<i>${esc(r.note)}</i>`;
+}
+
+function refreshAll() {
+  const cards = [...document.querySelectorAll(".card")];
+  cards.forEach(refreshVerdict);
+  const wins = cards.filter((c) => c.dataset.v === "win").length;
+  $("wincount").textContent = cards.length ? `${wins} winner${wins === 1 ? "" : "s"} out of ${cards.length} products` : "";
+}
+
+// Checks videos by itself for the few products that already pass profit and orders.
+let autoToken = 0;
+async function autoVideoChecks() {
+  const my = ++autoToken; // a newer search cancels an older run
+  const cands = [...document.querySelectorAll(".card")].filter((c) => {
+    const cost = numberOrNull(c.dataset.cost), price = numberOrNull(c.dataset.price), sold = numberOrNull(c.dataset.sold);
+    if (cost === null || price === null || !(sold >= MIN_ORDERS_WIN)) return false;
+    return price - cost - (price * 0.029 + 0.3) - 8 >= MIN_PROFIT_WIN;
+  }).slice(0, 5);
+  for (const c of cands) {
+    if (my !== autoToken || !document.contains(c)) return;
+    const b = c.querySelector(".vid");
+    if (!b || b.disabled || c.dataset.video) continue;
+    b.click();
+    await new Promise((ok) => setTimeout(ok, 1500));
+  }
+}
+
+// After "Find Winning Products": wait for the automatic video checks, then say how many winners there are.
+async function winnersSummary() {
+  if (!document.body.classList.contains("onlywin")) return;
+  $("status").textContent = "Checking videos on the best products. Winners appear here when confirmed...";
+  for (let i = 0; i < 40; i++) {
+    if (![...document.querySelectorAll(".card .vid")].some((b) => b.disabled)) break;
+    await new Promise((ok) => setTimeout(ok, 1500));
+  }
+  if (!document.body.classList.contains("onlywin")) return;
+  refreshAll();
+  const wins = [...document.querySelectorAll(".card")].filter((c) => c.dataset.v === "win").length;
+  $("status").textContent = wins
+    ? wins + " winning product" + (wins === 1 ? "" : "s") + " found."
+    : "No winners found right now. A winner needs good profit, many orders and people watching videos. Try again later, or try a season button.";
+}
+
 function render(j, label) {
   if (!j || !Array.isArray(j.results) || !j.results.length) {
     $("status").textContent = j?.message || "No products found. Try another keyword or research option.";
@@ -209,10 +348,11 @@ function render(j, label) {
     const confidence = p.confidence ?? p.dataConfidence;
     const sellers = numberOrNull(p.listedBySellers);
 
-    return `<article class="card">
+    return `<article class="card" data-cost="${esc(p.cost ?? "")}" data-price="${esc(price ?? "")}" data-sold="${esc(numberOrNull(p.sold) ?? "")}" data-rating="${esc(numberOrNull(p.rating) ?? "")}">
       <img src="${image}" alt="${esc(p.name || "Product")}" loading="lazy" referrerpolicy="no-referrer">
       <div class="details">
         <div class="name">${index + 1}. ${esc(p.name || "Unnamed product")}</div>
+        <div class="verdict"></div>
         <div class="meta">Supplier cost: ${money(p.cost)} · Suggested price: ${money(price)}</div>
         <div class="meta">${esc(p.category || "Uncategorized")}</div>
         <div class="meta">Competing sellers: ${sellers === null ? "Unknown" : sellers}</div>
@@ -239,6 +379,8 @@ function render(j, label) {
       </div>
     </article>`;
   }).join("");
+  refreshAll();
+  autoVideoChecks().then(winnersSummary);
 }
 
 function whyBlock(p) {
@@ -265,6 +407,8 @@ function whyBlock(p) {
 
 async function load(url, label, message) {
   const id = ++requestNumber;
+  // "Find Winning Products" shows only WINNER cards. Every other button shows all products.
+  document.body.classList.toggle("onlywin", url === "/api/research/winners");
   $("status").textContent = message;
   $("out").innerHTML = "";
 
@@ -272,6 +416,7 @@ async function load(url, label, message) {
     const r = await fetch(url, {headers:{"Accept":"application/json"}});
     const j = await r.json();
     if (id !== requestNumber) return;
+    if (r.status === 401 || r.status === 402) { await refreshMe(); return; }
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     render(j, label);
   } catch (e) {
@@ -349,6 +494,8 @@ document.addEventListener("click", async e => {
     const profit = numberOrNull(j.profit);
     const margin = numberOrNull(j.margin);
     const cls = profit === null ? "" : profit >= 0 ? "good" : "bad";
+    const artP = btn.closest(".card");
+    if (artP && profit !== null) { artP.dataset.realProfit = profit; refreshVerdict(artP); refreshAll(); }
 
     res.innerHTML =
       `Selling price: ${money(j.sell)}<br>` +
@@ -365,6 +512,101 @@ document.addEventListener("click", async e => {
     btn.disabled = false;
   }
 });
+
+// ---------- accounts and subscription ----------
+let me = { billing: false, subscribed: true };
+
+async function postJson(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  let j = {};
+  try { j = await r.json(); } catch (_) {}
+  if (!r.ok) throw new Error(j.error || "Something went wrong (" + r.status + ")");
+  return j;
+}
+
+function renderAccount() {
+  const locked = me.billing && (!me.loggedIn || !me.subscribed);
+  document.body.classList.toggle("locked", locked);
+  $("authbox").hidden = !(me.billing && !me.loggedIn);
+  $("subbox").hidden = !(me.billing && me.loggedIn && !me.subscribed);
+  if (me.billing) $("priceText").textContent = (me.price || "$30 per month") + ". Cancel any time.";
+  const acct = $("acct");
+  if (me.billing && me.loggedIn) {
+    acct.hidden = false;
+    acct.innerHTML = `<span>${esc(me.email)}${me.admin ? " (owner)" : me.subscribed ? " · Subscribed" : ""}</span>` +
+      (me.subscribed && !me.admin ? `<button class="season-btn" id="manageBtn">Manage billing</button>` : "") +
+      `<button class="season-btn" id="logoutBtn">Log out</button>`;
+  } else {
+    acct.hidden = true;
+    acct.innerHTML = "";
+  }
+  if (!locked && $("status").textContent === "Log in to start.") $("status").textContent = "Choose a research option to begin.";
+  if (locked) {
+    $("out").innerHTML = "";
+    $("status").textContent = me.loggedIn ? "Subscribe to start." : "Log in to start.";
+  }
+}
+
+async function refreshMe() {
+  try {
+    const r = await fetch("/api/auth/me");
+    me = await r.json();
+  } catch (_) {}
+  renderAccount();
+  return me;
+}
+
+async function authSubmit(kind) {
+  $("authMsg").textContent = "Please wait...";
+  try {
+    await postJson("/api/auth/" + kind, { email: $("authEmail").value, password: $("authPass").value });
+    $("authPass").value = "";
+    $("authMsg").textContent = "";
+    await refreshMe();
+    loadRecent();
+  } catch (e) {
+    $("authMsg").textContent = e.message;
+  }
+}
+
+async function goTo(url, msgId) {
+  $(msgId).textContent = "Opening the secure payment page...";
+  try {
+    const j = await postJson(url);
+    location.href = j.url;
+  } catch (e) {
+    $(msgId).textContent = e.message;
+  }
+}
+
+async function logout() {
+  try { await postJson("/api/auth/logout"); } catch (_) {}
+  await refreshMe();
+}
+
+$("authLogin").addEventListener("click", () => authSubmit("login"));
+$("authSignup").addEventListener("click", () => authSubmit("signup"));
+$("authPass").addEventListener("keydown", e => { if (e.key === "Enter") authSubmit("login"); });
+$("subBtn").addEventListener("click", () => goTo("/api/billing/checkout", "subMsg"));
+$("subLogout").addEventListener("click", logout);
+$("acct").addEventListener("click", e => {
+  if (e.target.id === "logoutBtn") logout();
+  if (e.target.id === "manageBtn") goTo("/api/billing/portal", "subMsg");
+});
+
+(async function startAccount() {
+  await refreshMe();
+  // Back from Stripe: the payment confirmation can take a few seconds to arrive.
+  if (/[?&]paid=1/.test(location.search)) {
+    $("status").textContent = "Thank you! Confirming your payment...";
+    for (let i = 0; i < 15 && !me.subscribed; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      await refreshMe();
+    }
+    if (me.subscribed) $("status").textContent = "You are subscribed. Choose a research option to begin.";
+    history.replaceState(null, "", "/");
+  }
+})();
 
 $("win").addEventListener("click", winners);
 
@@ -402,6 +644,8 @@ document.addEventListener("click", async (e) => {
     const r = await fetch("/api/research/video?q=" + encodeURIComponent(b.dataset.name || ""));
     const j = await r.json();
     if (!r.ok || j.error) throw new Error(j.error || "Check failed");
+    const artV = b.closest(".card");
+    if (artV) { artV.dataset.video = JSON.stringify({ videos: j.videos || 0, median: j.medianViews != null ? j.medianViews : (j.avgViews || 0), recent90: j.recent90 || 0 }); refreshVerdict(artV); refreshAll(); }
     if (!j.videos) { out.textContent = "No videos found for this product."; return; }
     const n = (x) => Number(x).toLocaleString();
     out.innerHTML = `<b>${esc(j.label)}</b><br>` +
