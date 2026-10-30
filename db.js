@@ -237,4 +237,33 @@ async function count() {
   return r.rows[0].n;
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, saveSearch, listSearches, count };
+// Signed-in Google users: one row per email, with first and last sign-in.
+let usersReady = null;
+async function saveUser(u) {
+  if (!enabled() || !u || !u.email || !(await init())) return false;
+  const p = getPool();
+  try {
+    if (!usersReady) {
+      usersReady = p.query(`CREATE TABLE IF NOT EXISTS users (
+        email TEXT PRIMARY KEY,
+        name TEXT,
+        logins INTEGER DEFAULT 1,
+        first_login TIMESTAMPTZ DEFAULT now(),
+        last_login TIMESTAMPTZ DEFAULT now()
+      )`);
+    }
+    await usersReady;
+    await p.query(
+      `INSERT INTO users (email, name) VALUES ($1, $2)
+       ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, last_login = now(), logins = users.logins + 1`,
+      [String(u.email).toLowerCase(), String(u.name || '').slice(0, 120)]
+    );
+    return true;
+  } catch (e) {
+    usersReady = null;
+    console.error('could not save user:', e.message || e);
+    return false;
+  }
+}
+
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, saveSearch, listSearches, count, saveUser };
