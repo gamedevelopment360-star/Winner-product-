@@ -23,8 +23,13 @@ if (!password) {
   });
 }
 
+require('./googleauth')(app);
 require('./research')(app);
-app.use(express.static(path.join(__dirname, 'Pubic')));
+const site = path.join(__dirname, 'Pubic');
+// The first page people see is the landing page. The dashboard lives at /app.
+app.get('/', (req, res) => res.sendFile(path.join(site, 'landing.html')));
+app.get('/app', (req, res) => res.sendFile(path.join(site, 'index.html')));
+app.use(express.static(site, { index: false }));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log('Winner Finder running on port ' + port));
