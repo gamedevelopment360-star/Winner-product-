@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in – Winner Finder</title>
+<style>
+:root{--bg:#0f1115;--panel:#181b22;--line:#2a2f3a;--text:#e8eaf0;--mute:#8b93a5;--accent:#2ecc71;--bad:#ff5c5c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:18px}
+.box{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px}
+.logo{font-weight:800;font-size:20px;display:block;text-align:center;margin-bottom:4px;color:var(--text);text-decoration:none}
+.logo i{color:var(--accent);font-style:normal}
+p.sub{text-align:center;color:var(--mute);margin:0 0 18px}
+.btn{width:100%;border:0;border-radius:10px;padding:13px;font-weight:700;font-size:15px;cursor:pointer;background:var(--accent);color:#06210f}
+.g{background:#fff;color:#1f1f1f;display:flex;align-items:center;justify-content:center;gap:10px;margin-top:0}
+#msg{color:var(--bad);font-size:14px;min-height:20px;margin-top:12px;text-align:center}
+.back{display:block;text-align:center;margin-top:14px;color:var(--mute);font-size:14px;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="box">
+ <a class="logo" href="/landing.html">Winner <i>Finder</i></a>
+ <p class="sub">Continue with your Google account</p>
+ <button class="btn g" id="google"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7a14.5 14.5 0 010-9.4l-7.9-6.1a24 24 0 000 21.6l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>Sign in with Google</button>
+ <div id="msg"></div>
+ <a class="back" href="/landing.html">Back to home</a>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const say = (t) => { $('#msg').textContent = t; };
+// already logged in? go straight to the app
+fetch('/api/auth/me').then((r) => r.ok ? r.json() : {}).then((j) => { if (j && j.loggedIn) location.href = '/app'; }).catch(() => {});
+
+
+$('#google').onclick = async () => {
+  say('');
+  try {
+    const r = await fetch('/auth/google', { method: 'HEAD', redirect: 'manual' });
+    if (r.status === 404) return say('Google sign-in is not set up on the server yet.');
+  } catch (e) {}
+  location.href = '/auth/google';
+};
+</script>
+</body>
+</html>

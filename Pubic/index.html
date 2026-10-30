@@ -39,12 +39,18 @@ body.locked .app,body.locked .top{display:none!important}
 #gate input{width:100%;margin-top:8px}
 #acct{margin:14px 8px 0;font-size:12px;color:var(--mute)}
 #acct button{margin-top:6px;width:auto;padding:6px 10px;border:1px solid var(--line)}
+.nh{display:flex;align-items:center;justify-content:space-between}
+.nh h1{margin-bottom:14px}
+nav .x{display:none;width:auto;border:1px solid var(--line);color:var(--text);padding:6px 12px;margin-bottom:14px}
+#scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4}
+body.navopen #scrim{display:block}
 .page{display:none}.page.on{display:block}
 label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 .out{font-size:18px;margin-top:14px}
 @media(max-width:760px){
  nav{position:fixed;left:-240px;z-index:5;transition:left .2s;width:230px}
  nav.open{left:0}
+ nav .x{display:block}
  .top{display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--line);z-index:4}
  .top button{background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 12px;font-size:18px}
  main{padding:14px}
@@ -69,8 +75,9 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 </div>
 <div class="top"><button id="menu">&#9776;</button><b id="ttl">Dashboard</b></div>
 <div class="app">
+<div id="scrim"></div>
 <nav id="nav">
- <h1>Winner Finder</h1>
+ <div class="nh"><h1>Winner Finder</h1><button class="x" id="closeNav">&#10005; Close</button></div>
  <button data-p="dash" class="on">Dashboard</button>
  <button data-p="win">Winning Products</button>
  <button data-p="tt">TikTok Ads Research</button>
@@ -198,16 +205,19 @@ async function load(el, url, empty) {
 
 // navigation
 const nav = $('#nav');
-document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
-  document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+function setNav(o) { nav.classList.toggle('open', o); document.body.classList.toggle('navopen', o); }
+document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('nav button[data-p]').forEach((x) => x.classList.toggle('on', x === b));
   document.querySelectorAll('.page').forEach((p) => p.classList.toggle('on', p.id === b.dataset.p));
-  $('#ttl').textContent = b.textContent; nav.classList.remove('open');
+  $('#ttl').textContent = b.textContent; setNav(false);
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
   if (b.dataset.p === 'hist') loadHist();
   if (b.dataset.p === 'set') api('/api/version').then((j) => $('#ver').textContent = j.version).catch(() => {});
 });
-$('#menu').onclick = () => nav.classList.toggle('open');
+$('#menu').onclick = () => setNav(!nav.classList.contains('open'));
+$('#closeNav').onclick = () => setNav(false);
+$('#scrim').onclick = () => setNav(false);
 
 // dashboard
 async function loadDash() {
@@ -335,7 +345,7 @@ $('#acct').onclick = (e) => {
   if (/[?&]paid=1/.test(location.search)) { // back from Stripe: confirmation can take a few seconds
     $('#subMsg').textContent = 'Thank you! Confirming your payment...';
     for (let i = 0; i < 15 && !me.subscribed; i++) { await new Promise((r) => setTimeout(r, 2000)); await refreshMe(); }
-    history.replaceState(null, '', '/');
+    history.replaceState(null, '', '/app');
   }
 })();
 </script>
