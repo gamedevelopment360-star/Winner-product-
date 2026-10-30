@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Winner Finder</title>
+<style>
+:root{--bg:#0f1115;--panel:#181b22;--line:#2a2f3a;--text:#e8eaf0;--mute:#8b93a5;--accent:#2ecc71;--link:#6cb4ff;--bad:#ff5c5c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,sans-serif}
+.app{display:flex;min-height:100vh}
+nav{width:230px;background:var(--panel);border-right:1px solid var(--line);padding:16px 10px;position:sticky;top:0;height:100vh;flex-shrink:0}
+nav h1{font-size:17px;margin:0 8px 14px}
+nav button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--mute);padding:11px 12px;border-radius:8px;font-size:15px;cursor:pointer}
+nav button.on,nav button:hover{background:#232834;color:var(--text)}
+main{flex:1;padding:20px;min-width:0;max-width:1000px}
+h2{margin:0 0 14px;font-size:20px}
+.top{display:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.stat b{display:block;font-size:26px}
+.stat span{color:var(--mute);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+input{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line);color:var(--text);padding:11px 12px;border-radius:10px;font-size:15px}
+.btn{background:var(--accent);color:#06210f;border:0;border-radius:10px;padding:11px 16px;font-weight:600;cursor:pointer;font-size:14px}
+.btn.alt{background:#232834;color:var(--text);border:1px solid var(--line)}
+.chip{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:20px;padding:8px 14px;cursor:pointer;font-size:14px}
+.item{display:flex;gap:12px;margin-bottom:10px}
+.item img{width:84px;height:84px;object-fit:cover;border-radius:8px;background:#222;flex-shrink:0}
+.item a{color:var(--link);text-decoration:none;font-weight:600}
+.meta{color:var(--mute);font-size:13px;margin-top:3px}
+.badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:#232834;margin-right:6px;color:var(--text)}
+.score{color:var(--accent);font-weight:700}
+.msg{color:var(--mute);padding:10px 0}
+.err{color:var(--bad)}
+body.locked .app,body.locked .top{display:none!important}
+#gate{max-width:380px;margin:12vh auto;padding:0 16px}
+#gate .card{margin-bottom:14px}
+#gate input{width:100%;margin-top:8px}
+#acct{margin:14px 8px 0;font-size:12px;color:var(--mute)}
+#acct button{margin-top:6px;width:auto;padding:6px 10px;border:1px solid var(--line)}
+.page{display:none}.page.on{display:block}
+label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
+.out{font-size:18px;margin-top:14px}
+@media(max-width:760px){
+ nav{position:fixed;left:-240px;z-index:5;transition:left .2s;width:230px}
+ nav.open{left:0}
+ .top{display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--line);z-index:4}
+ .top button{background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 12px;font-size:18px}
+ main{padding:14px}
+}
+</style>
+</head>
+<body>
+<div id="gate" hidden>
+ <div class="card" id="authbox" hidden>
+  <b>Log in or create an account</b>
+  <input id="authEmail" type="email" placeholder="Email" autocomplete="email">
+  <input id="authPass" type="password" placeholder="Password (8 or more characters)" autocomplete="current-password">
+  <div class="row" style="margin-top:10px"><button class="btn" id="authLogin">Log in</button><button class="btn alt" id="authSignup">Create account</button></div>
+  <div class="meta" id="authMsg"></div>
+ </div>
+ <div class="card" id="subbox" hidden>
+  <b>Subscribe to use Winner Finder</b>
+  <div class="meta" id="priceText"></div>
+  <div class="row" style="margin-top:10px"><button class="btn" id="subBtn">Subscribe</button><button class="btn alt" id="subLogout">Log out</button></div>
+  <div class="meta" id="subMsg"></div>
+ </div>
+</div>
+<div class="top"><button id="menu">&#9776;</button><b id="ttl">Dashboard</b></div>
+<div class="app">
+<nav id="nav">
+ <h1>Winner Finder</h1>
+ <button data-p="dash" class="on">Dashboard</button>
+ <button data-p="win">Winning Products</button>
+ <button data-p="tt">TikTok Ads Research</button>
+ <button data-p="yt">YouTube Research</button>
+ <button data-p="sup">Suppliers (AliExpress / CJ)</button>
+ <button data-p="calc">Profit Calculator</button>
+ <button data-p="hist">Search History</button>
+ <button data-p="set">Settings</button>
+ <div id="acct" hidden></div>
+</nav>
+<main>
+
+<section class="page on" id="dash">
+ <h2>Dashboard</h2>
+ <div class="grid">
+  <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
+  <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
+  <div class="card stat"><b id="sVideos">–</b><span>Trending videos</span></div>
+  <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
+ </div>
+ <h2>Top saved products</h2>
+ <div id="dTop" class="msg">Loading…</div>
+</section>
+
+<section class="page" id="win">
+ <h2>Winning Products</h2>
+ <div class="row">
+  <button class="btn" data-w="/api/research/trending">AliExpress Picks</button>
+  <button class="btn alt" data-w="/api/research/rising">Rising</button>
+  <button class="btn alt" data-w="/api/research/demand">Demand</button>
+ </div>
+ <div class="row">
+  <button class="chip" data-w="/api/research/winners/summer">Summer</button>
+  <button class="chip" data-w="/api/research/winners/winter">Winter</button>
+  <button class="chip" data-w="/api/research/winners/christmas">Christmas</button>
+  <button class="chip" data-w="/api/research/winners/halloween">Halloween</button>
+  <button class="chip" data-w="/api/research/winners/valentine">Valentine’s</button>
+  <button class="chip" data-w="/api/research/winners/backtoschool">Back to School</button>
+ </div>
+ <div class="row"><input id="q" placeholder="Search a product keyword"><button class="btn" id="go">Search</button></div>
+ <div id="wOut" class="msg">Pick a button or search a keyword.</div>
+</section>
+
+<section class="page" id="tt">
+ <h2>TikTok Ads Research</h2>
+ <div class="card msg">Nothing is connected for TikTok yet. Your server has no TikTok route, so this section is a placeholder until one is added.</div>
+</section>
+
+<section class="page" id="yt">
+ <h2>YouTube Research</h2>
+ <div class="row"><button class="btn" id="ytGo">Trending Products (YouTube videos)</button></div>
+ <div class="row"><input id="vq" placeholder="Video interest for one product"><button class="btn alt" id="vGo">Check</button></div>
+ <div id="vOut" class="msg"></div>
+ <div id="yOut" class="msg"></div>
+</section>
+
+<section class="page" id="sup">
+ <h2>Suppliers (AliExpress / CJ)</h2>
+ <div class="row">
+  <button class="chip" data-s="">All</button>
+  <button class="chip" data-s="aliexpress">AliExpress</button>
+  <button class="chip" data-s="cj">CJ</button>
+ </div>
+ <div id="sOut" class="msg">Loading…</div>
+</section>
+
+<section class="page" id="calc">
+ <h2>Profit Calculator</h2>
+ <div class="card">
+  <label>Selling price ($)</label><input id="cSell" type="number" step="0.01">
+  <label>Product cost ($)</label><input id="cCost" type="number" step="0.01">
+  <label>Shipping ($)</label><input id="cShip" type="number" step="0.01" value="4">
+  <label>Ad cost per sale ($)</label><input id="cAd" type="number" step="0.01" value="0">
+  <div class="out" id="cOut">Enter a selling price and cost.</div>
+  <div class="meta">Payment fee is 2.9% + $0.30, same as the server. Shipping is a rough guess unless you know the real figure.</div>
+ </div>
+</section>
+
+<section class="page" id="hist">
+ <h2>Search History</h2>
+ <div id="hOut" class="msg">Loading…</div>
+</section>
+
+<section class="page" id="set">
+ <h2>Settings</h2>
+ <div class="card"><div>Server version: <b id="ver">–</b></div>
+ <div class="meta">API keys and limits (CJ_API_KEY, YOUTUBE_API_KEY, MAX_COST, MIN_PROFIT, USE_CJ) are set as environment variables on Render, not here.</div></div>
+</section>
+
+</main>
+</div>
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const num = (n) => Number(n || 0).toLocaleString();
+async function api(url) {
+  const r = await fetch(url);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Request failed (' + r.status + ')');
+  return j;
+}
+function product(p) {
+  const bits = [];
+  if (p.cost != null) bits.push('Cost $' + Number(p.cost).toFixed(2));
+  if (p.suggestedPrice) bits.push('Sell ~$' + Number(p.suggestedPrice).toFixed(2));
+  if (p.sold != null) bits.push(num(p.sold) + ' sold');
+  if (p.rating != null) bits.push('★ ' + p.rating);
+  if (p.growth != null) bits.push('+' + p.growth + ' growth');
+  return '<div class="card item">' + (p.image ? '<img src="' + esc(p.image) + '" alt="">' : '') +
+    '<div><div>' + esc(p.name) + '</div>' +
+    '<div class="meta"><span class="badge">' + esc((p.source || 'cj').toUpperCase()) + '</span>' +
+    (p.score != null ? 'Score <span class="score">' + esc(p.score) + '</span> · ' : '') + bits.join(' · ') + '</div>' +
+    (p.competition ? '<div class="meta">Competition: ' + esc(typeof p.competition === 'object' ? (p.competition.label || p.competition.level || '') : p.competition) + '</div>' : '') +
+    '</div></div>';
+}
+function list(el, results, empty) {
+  el.className = results && results.length ? '' : 'msg';
+  el.innerHTML = results && results.length ? results.map(product).join('') : esc(empty || 'Nothing found.');
+}
+async function load(el, url, empty) {
+  el.className = 'msg'; el.textContent = 'Loading… this can take a while.';
+  try { const j = await api(url); list(el, j.results, j.message || empty); }
+  catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+}
+
+// navigation
+const nav = $('#nav');
+document.querySelectorAll('nav button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.page').forEach((p) => p.classList.toggle('on', p.id === b.dataset.p));
+  $('#ttl').textContent = b.textContent; nav.classList.remove('open');
+  if (b.dataset.p === 'dash') loadDash();
+  if (b.dataset.p === 'sup') loadSup('');
+  if (b.dataset.p === 'hist') loadHist();
+  if (b.dataset.p === 'set') api('/api/version').then((j) => $('#ver').textContent = j.version).catch(() => {});
+});
+$('#menu').onclick = () => nav.classList.toggle('open');
+
+// dashboard
+async function loadDash() {
+  api('/api/saved?sort=score&limit=6').then((j) => { $('#sSaved').textContent = num(j.total); list($('#dTop'), j.results.slice(0, 6), 'No saved products yet.'); })
+    .catch((e) => { $('#dTop').textContent = e.message; });
+  api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
+  api('/api/searches?limit=20').then((j) => $('#sSearch').textContent = num((j.results || []).length)).catch(() => {});
+  api('/api/research/youtube-trending').then((j) => $('#sVideos').textContent = num((j.videos || []).length)).catch(() => {});
+}
+
+// winning products
+document.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => load($('#wOut'), b.dataset.w));
+function doSearch() { const q = $('#q').value.trim(); if (q) load($('#wOut'), '/api/research?q=' + encodeURIComponent(q)); }
+$('#go').onclick = doSearch;
+$('#q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
+
+// youtube
+function videos(el, vids) {
+  el.className = vids && vids.length ? '' : 'msg';
+  el.innerHTML = vids && vids.length ? vids.map((v) =>
+    '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
+    '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
+    '<div class="meta">' + esc(v.channel) + '</div><div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
+}
+$('#ytGo').onclick = async () => {
+  const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
+  try { const j = await api('/api/research/youtube-trending'); videos(el, j.videos); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+};
+$('#vGo').onclick = async () => {
+  const q = $('#vq').value.trim(); if (!q) return;
+  const el = $('#vOut'); el.className = 'msg'; el.textContent = 'Checking…';
+  try {
+    const j = await api('/api/research/video?q=' + encodeURIComponent(q));
+    el.className = 'card'; el.innerHTML = '<pre style="white-space:pre-wrap;margin:0;font:13px system-ui">' + esc(JSON.stringify(j, null, 2)) + '</pre>';
+  } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+};
+
+// suppliers (saved products filtered by source)
+async function loadSup(src) {
+  const el = $('#sOut'); el.className = 'msg'; el.textContent = 'Loading…';
+  try {
+    const j = await api('/api/saved?limit=100');
+    list(el, (j.results || []).filter((p) => !src || (p.source || 'cj') === src), 'No saved products from this supplier.');
+  } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+}
+document.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => loadSup(b.dataset.s));
+
+// profit calculator
+function calc() {
+  const sell = parseFloat($('#cSell').value), cost = parseFloat($('#cCost').value);
+  const ship = parseFloat($('#cShip').value) || 0, ad = parseFloat($('#cAd').value) || 0;
+  if (!(sell > 0) || !(cost >= 0) || isNaN(cost)) { $('#cOut').textContent = 'Enter a selling price and cost.'; return; }
+  const fee = sell * 0.029 + 0.30, profit = sell - cost - ship - fee - ad;
+  $('#cOut').innerHTML = 'Profit per sale: <b style="color:' + (profit >= 0 ? 'var(--accent)' : 'var(--bad)') + '">$' + profit.toFixed(2) +
+    '</b> (' + (profit / sell * 100).toFixed(1) + '% margin)<div class="meta">Payment fee $' + fee.toFixed(2) + '</div>';
+}
+['#cSell', '#cCost', '#cShip', '#cAd'].forEach((s) => $(s).oninput = calc);
+
+// history
+async function loadHist() {
+  const el = $('#hOut');
+  try {
+    const j = await api('/api/searches?limit=50'), rows = j.results || [];
+    el.className = rows.length ? 'row' : 'msg';
+    el.innerHTML = rows.length ? rows.map((r) => {
+      const w = typeof r === 'string' ? r : (r.q || r.query || r.keyword || r.term || '');
+      return '<button class="chip" data-h="' + esc(w) + '">' + esc(w) + '</button>';
+    }).join('') : 'No searches yet.';
+    el.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => {
+      document.querySelector('nav [data-p=win]').click(); $('#q').value = b.dataset.h; doSearch();
+    });
+  } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+}
+
+// accounts and subscription (same routes as your old page)
+let me = { billing: false, subscribed: true }, started = false;
+async function postJson(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  let j = {}; try { j = await r.json(); } catch (_) {}
+  if (!r.ok) throw new Error(j.error || 'Something went wrong (' + r.status + ')');
+  return j;
+}
+function renderAccount() {
+  const locked = me.billing && (!me.loggedIn || !me.subscribed);
+  document.body.classList.toggle('locked', locked);
+  $('#gate').hidden = !locked;
+  $('#authbox').hidden = !(me.billing && !me.loggedIn);
+  $('#subbox').hidden = !(me.billing && me.loggedIn && !me.subscribed);
+  if (me.billing) $('#priceText').textContent = (me.price || '$30 per month') + '. Cancel any time.';
+  const a = $('#acct');
+  if (me.billing && me.loggedIn) {
+    a.hidden = false;
+    a.innerHTML = '<div>' + esc(me.email) + (me.admin ? ' (owner)' : me.subscribed ? ' · Subscribed' : '') + '</div>' +
+      (me.subscribed && !me.admin ? '<button class="chip" id="manageBtn">Manage billing</button> ' : '') + '<button class="chip" id="logoutBtn">Log out</button>';
+  } else { a.hidden = true; a.innerHTML = ''; }
+  if (!locked && !started) { started = true; loadDash(); }
+}
+async function refreshMe() {
+  try { me = await (await fetch('/api/auth/me')).json(); } catch (_) {}
+  renderAccount(); return me;
+}
+async function authSubmit(kind) {
+  $('#authMsg').textContent = 'Please wait...';
+  try {
+    await postJson('/api/auth/' + kind, { email: $('#authEmail').value, password: $('#authPass').value });
+    $('#authPass').value = ''; $('#authMsg').textContent = ''; await refreshMe();
+  } catch (e) { $('#authMsg').textContent = e.message; }
+}
+async function goTo(url, msgId) {
+  $(msgId).textContent = 'Opening the secure payment page...';
+  try { location.href = (await postJson(url)).url; } catch (e) { $(msgId).textContent = e.message; }
+}
+async function logout() { try { await postJson('/api/auth/logout'); } catch (_) {} started = false; await refreshMe(); }
+$('#authLogin').onclick = () => authSubmit('login');
+$('#authSignup').onclick = () => authSubmit('signup');
+$('#authPass').onkeydown = (e) => { if (e.key === 'Enter') authSubmit('login'); };
+$('#subBtn').onclick = () => goTo('/api/billing/checkout', '#subMsg');
+$('#subLogout').onclick = logout;
+$('#acct').onclick = (e) => {
+  if (e.target.id === 'logoutBtn') logout();
+  if (e.target.id === 'manageBtn') goTo('/api/billing/portal', '#subMsg');
+};
+(async function () {
+  await refreshMe();
+  if (/[?&]paid=1/.test(location.search)) { // back from Stripe: confirmation can take a few seconds
+    $('#subMsg').textContent = 'Thank you! Confirming your payment...';
+    for (let i = 0; i < 15 && !me.subscribed; i++) { await new Promise((r) => setTimeout(r, 2000)); await refreshMe(); }
+    history.replaceState(null, '', '/');
+  }
+})();
+</script>
+</body>
+</html>
