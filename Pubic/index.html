@@ -224,7 +224,7 @@ $('#scrim').onclick = () => setNav(false);
 
 // dashboard
 async function loadDash() {
-  api('/api/saved?sort=score&limit=6').then((j) => { $('#sSaved').textContent = num(j.total); list($('#dTop'), j.results.slice(0, 6), 'No saved products yet.'); })
+  api('/api/saved?sort=score&limit=6').then((j) => { $('#sSaved').textContent = num(j.total); list($('#dTop'), j.results.slice(0, 6), 'Nothing here yet. Open Winning Products and fetch some, and they will be saved here.'); })
     .catch((e) => { $('#dTop').textContent = e.message; });
   api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
   api('/api/searches?limit=20').then((j) => $('#sSearch').textContent = num((j.results || []).length)).catch(() => {});
@@ -263,7 +263,7 @@ async function loadSup(src) {
   const el = $('#sOut'); el.className = 'msg'; el.textContent = 'Loading…';
   try {
     const j = await api('/api/saved?limit=100');
-    list(el, (j.results || []).filter((p) => !src || (p.source || 'cj') === src), 'No saved products from this supplier.');
+    list(el, (j.results || []).filter((p) => !src || (p.source || 'cj') === src), 'Nothing here yet. Fetch products in Winning Products and they will show up here.');
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 }
 document.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => loadSup(b.dataset.s));
