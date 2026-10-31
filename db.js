@@ -55,6 +55,21 @@ function init() {
       ).then(() => p.query(`ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS cost NUMERIC`)
       ).then(() => p.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS sold INTEGER`)
       ).then(() => p.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS rating NUMERIC`)
+      ).then(() => p.query(`
+        CREATE TABLE IF NOT EXISTS user_products (
+          email TEXT NOT NULL,
+          pid TEXT NOT NULL,
+          saved_at TIMESTAMPTZ DEFAULT now(),
+          PRIMARY KEY (email, pid)
+        )`)
+      ).then(() => p.query(`
+        CREATE TABLE IF NOT EXISTS user_searches (
+          id SERIAL PRIMARY KEY,
+          email TEXT NOT NULL,
+          query TEXT NOT NULL,
+          results INTEGER,
+          searched_at TIMESTAMPTZ DEFAULT now()
+        )`)
       ).then(() => true).catch((e) => {
         console.error('database setup failed:', e.message || e);
         ready = null;
@@ -130,6 +145,9 @@ async function listProducts(opts) {
     params.push(opts.maxCost);
     conds.push('cost <= $' + params.length);
   }
+  if (!opts.email) return []; // nobody signed in: nothing fetched yet
+  params.push(String(opts.email).toLowerCase());
+  conds.push('pid IN (SELECT pid FROM user_products WHERE email = $' + params.length + ')');
   const where = conds.length ? 'WHERE ' + conds.join(' AND ') : '';
   params.push(limit);
   const order = opts.sort === 'new' ? 'last_seen DESC' : 'score DESC, last_seen DESC';
@@ -151,6 +169,7 @@ async function listRising(opts) {
   opts = opts || {};
   if (!(await init())) throw new Error('Database is not set up.');
   const limit = Math.min(Math.max(parseInt(opts.limit, 10) || 30, 1), 100);
+  if (!opts.email) return [];
   const maxCost = opts.maxCost || 1e9;
   const r = await getPool().query(
     `WITH latest AS (
@@ -167,8 +186,9 @@ async function listRising(opts) {
        JOIN base b ON b.pid = l.pid
        JOIN products p ON p.pid = l.pid
       WHERE l.listed > b.listed AND p.cost <= $1
+        AND p.pid IN (SELECT pid FROM user_products WHERE email = $3)
       ORDER BY (l.listed - b.listed) DESC, p.score DESC
-      LIMIT $2`, [maxCost, limit]);
+      LIMIT $2`, [maxCost, limit, String(opts.email).toLowerCase()]);
   return r.rows.map((x) => ({
     pid: x.pid, name: x.name, image: x.image,
     cost: Number(x.cost), suggestedPrice: Number(x.suggested_price),
@@ -183,6 +203,7 @@ async function listDemand(opts) {
   opts = opts || {};
   if (!(await init())) throw new Error('Database is not set up.');
   const limit = Math.min(Math.max(parseInt(opts.limit, 10) || 30, 1), 100);
+  if (!opts.email) return [];
   const maxCost = opts.maxCost || 1e9;
   const r = await getPool().query(
     `WITH latest AS (
@@ -199,8 +220,9 @@ async function listDemand(opts) {
        JOIN base b ON b.pid = l.pid
        JOIN products p ON p.pid = l.pid
       WHERE l.sold > b.sold AND p.cost <= $1
+        AND p.pid IN (SELECT pid FROM user_products WHERE email = $3)
       ORDER BY (l.sold - b.sold) DESC, p.score DESC
-      LIMIT $2`, [maxCost, limit]);
+      LIMIT $2`, [maxCost, limit, String(opts.email).toLowerCase()]);
   return r.rows.map((x) => ({
     pid: x.pid, name: x.name, image: x.image,
     cost: Number(x.cost), suggestedPrice: Number(x.suggested_price),
@@ -215,26 +237,49 @@ async function listDemand(opts) {
   }));
 }
 
-async function saveSearch(query, results) {
+async function saveSearch(query, results, email) {
   if (!enabled() || !query) return;
   if (!(await init())) return;
-  await getPool().query('INSERT INTO searches (query, results) VALUES ($1, $2)',
-    [String(query).slice(0, 80), results == null ? null : results]);
+  const q = String(query).slice(0, 80);
+  const n = results == null ? null : results;
+  await getPool().query('INSERT INTO searches (query, results) VALUES ($1, $2)', [q, n]);
+  if (email) await getPool().query('INSERT INTO user_searches (email, query, results) VALUES ($1, $2, $3)', [String(email).toLowerCase(), q, n]);
 }
 
-async function listSearches(limit) {
+async function listSearches(limit, email) {
   if (!(await init())) throw new Error('Database is not set up.');
+  if (!email) return [];
   const n = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
   const r = await getPool().query(
     `SELECT LOWER(query) AS query, COUNT(*)::int AS times, MAX(searched_at) AS last_time
-       FROM searches GROUP BY LOWER(query) ORDER BY MAX(searched_at) DESC LIMIT $1`, [n]);
+       FROM user_searches WHERE email = $2 GROUP BY LOWER(query) ORDER BY MAX(searched_at) DESC LIMIT $1`,
+    [n, String(email).toLowerCase()]);
   return r.rows;
 }
 
-async function count() {
-  if (!(await init())) return 0;
-  const r = await getPool().query('SELECT COUNT(*)::int AS n FROM products');
+async function count(email) {
+  if (!(await init()) || !email) return 0;
+  const r = await getPool().query('SELECT COUNT(*)::int AS n FROM user_products WHERE email = $1', [String(email).toLowerCase()]);
   return r.rows[0].n;
+}
+
+// Remember that this user fetched these products.
+async function claimProducts(email, list) {
+  if (!enabled() || !email || !list || !list.length) return 0;
+  if (!(await init())) return 0;
+  const pids = [...new Set(list.map((x) => x && x.pid != null ? String(x.pid) : '').filter(Boolean))];
+  if (!pids.length) return 0;
+  await getPool().query(
+    'INSERT INTO user_products (email, pid) SELECT $1, UNNEST($2::text[]) ON CONFLICT DO NOTHING',
+    [String(email).toLowerCase(), pids]);
+  return pids.length;
+}
+
+// Erase all saved products, history and searches (the users table is kept).
+async function wipeAll() {
+  if (!enabled() || !(await init())) return false;
+  await getPool().query('TRUNCATE products, snapshots, searches, user_products, user_searches');
+  return true;
 }
 
 // Signed-in Google users: one row per email, with first and last sign-in.
@@ -266,4 +311,4 @@ async function saveUser(u) {
   }
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, saveSearch, listSearches, count, saveUser };
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, saveSearch, listSearches, count, saveUser, claimProducts, wipeAll };

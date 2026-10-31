@@ -38,6 +38,13 @@ module.exports = function (app) {
     } catch (e) { return null; }
   }
 
+  // Tell the rest of the server who is asking (req.userEmail), so data stays per person.
+  app.use((req, res, next) => {
+    const s = getSession(req);
+    if (s && s.email) req.userEmail = String(s.email).toLowerCase();
+    next();
+  });
+
   // Optional gate: set REQUIRE_LOGIN=true on Render once Google sign-in works.
   if (process.env.REQUIRE_LOGIN === 'true') {
     app.use((req, res, next) => {

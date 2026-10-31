@@ -486,6 +486,18 @@ function summarizeVideos(items, query) {
 
 // ---------- routes ----------
 module.exports = function (app) {
+  // Remember what each signed-in person fetched, so everyone only sees their own products.
+  app.use('/api/research', (req, res, next) => {
+    const email = req.userEmail;
+    const fetchRoute = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
+    if (!email || req.method !== 'GET' || !fetchRoute) return next();
+    const send = res.json.bind(res);
+    res.json = (body) => {
+      if (body && Array.isArray(body.results)) db.claimProducts(email, body.results).catch((e) => console.error('claim failed:', e.message || e));
+      return send(body);
+    };
+    next();
+  });
   app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
@@ -515,7 +527,7 @@ module.exports = function (app) {
     }
 
     db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
-    db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
+    db.saveSearch(q, list.length, req.userEmail).catch((e) => console.error('search save failed:', e.message || e));
     res.json({ results: list.map(publicFields), cjFailed: cjResult.status === 'rejected', aliFailed: aliResult.status === 'rejected' });
   });
 
@@ -713,7 +725,7 @@ module.exports = function (app) {
   app.get('/api/research/rising', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so rising products cannot be tracked.' });
     try {
-      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
+      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
       res.json({ results, message: results.length ? '' : 'No rising products yet. The site saves each product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
     } catch (e) {
       console.error('rising failed:', e.message || e);
@@ -841,7 +853,7 @@ module.exports = function (app) {
   app.get('/api/research/demand', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so demand growth cannot be tracked.' });
     try {
-      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST })).map((p) => ({
+      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({
         ...p, demand: demandDetail(p), competition: null, listedBySellers: '?', scoreParts: null, dataFlags: []
       }));
       res.json({ results, message: results.length ? '' : 'No demand growth yet. The site saves each AliExpress product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
@@ -855,8 +867,8 @@ module.exports = function (app) {
   app.get('/api/saved', async (req, res) => {
     if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on the server.' });
     try {
-      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST });
-      res.json({ total: await db.count(), results });
+      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST, email: req.userEmail });
+      res.json({ total: await db.count(req.userEmail), results });
     } catch (e) {
       console.error('saved list failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read saved products' });
@@ -867,7 +879,7 @@ module.exports = function (app) {
   app.get('/api/searches', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [] });
     try {
-      res.json({ results: await db.listSearches(req.query.limit) });
+      res.json({ results: await db.listSearches(req.query.limit, req.userEmail) });
     } catch (e) {
       console.error('searches list failed:', e.message || e);
       res.json({ results: [] });
