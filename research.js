@@ -899,6 +899,28 @@ module.exports = function (app) {
   });
 
   // Words that were searched, newest first. ?limit=20
+  // Open /api/db-check to see if the database is connected (shows the real reason if it is not).
+  app.get('/api/db-check', async (req, res) => {
+    const url = process.env.DATABASE_URL;
+    if (!url) return res.json({ ok: false, problem: 'DATABASE_URL is not set in Render, so nothing can be saved.' });
+    let c;
+    try {
+      const { Client } = require('pg');
+      const local = /localhost|127\.0\.0\.1/.test(url);
+      c = new Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false }, connectionTimeoutMillis: 10000 });
+      await c.connect();
+      await c.query('SELECT 1');
+      const t = await c.query("SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_name = 'searches'");
+      const has = t.rows[0].n > 0;
+      const saved = has ? (await c.query('SELECT COUNT(*)::int AS n FROM searches')).rows[0].n : 0;
+      res.json({ ok: true, connected: true, searchesTableExists: has, savedHistoryRows: saved });
+    } catch (e) {
+      res.json({ ok: false, connected: false, code: e.code || null, problem: String(e.message || e).split(url).join('[database url]').slice(0, 200) });
+    } finally {
+      if (c) c.end().catch(() => {});
+    }
+  });
+
   app.get('/api/searches', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [] });
     try {
