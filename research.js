@@ -20,7 +20,6 @@ function requireCjKey(req, res, next) {
 }
 
 const db = require('./db');
-const { productFromTitle } = require('./titlefilter');
 
 const BASE = 'https://developers.cjdropshipping.com/api2.0/v1';
 const COUNTRY = (process.env.RESEARCH_COUNTRY || 'US').toUpperCase();
@@ -461,12 +460,6 @@ function summarizeVideos(items, query) {
     if (hits.length >= 3) { onTopic = hits.length; vids = hits; }
   }
 
-  // Keep only videos whose title names a product (drops videos like "what is a skin tag?").
-  // If fewer than 3 videos name a product, keep them all.
-  let namesProduct = null;
-  const named = vids.filter((v) => productFromTitle(v.title));
-  if (named.length >= 3) { namesProduct = named.length; vids = named; }
-
   const totalViews = vids.reduce((a, v) => a + v.views, 0);
   const recent90 = vids.filter((v) => v.publishedAt && now - Date.parse(v.publishedAt) <= 90 * 86400000).length;
   const withViews = vids.filter((v) => v.views > 0);
@@ -477,7 +470,7 @@ function summarizeVideos(items, query) {
   const topSharePct = totalViews ? Math.round(top.views / totalViews * 100) : 0;
   const label = medianViews >= 100000 ? 'Lots of video interest' : medianViews >= 10000 ? 'Some video interest' : 'Little video interest';
   return {
-    videos: vids.length, totalViews, avgViews, medianViews, topSharePct, recent90, onTopic, namesProduct,
+    videos: vids.length, totalViews, avgViews, medianViews, topSharePct, recent90, onTopic,
     engagementPct: eng == null ? null : Math.round(eng * 1000) / 10,
     top: { title: top.title, channel: top.channel, views: top.views, url: 'https://www.youtube.com/watch?v=' + top.id },
     label
@@ -486,18 +479,6 @@ function summarizeVideos(items, query) {
 
 // ---------- routes ----------
 module.exports = function (app) {
-  // Remember what each signed-in person fetched, so everyone only sees their own products.
-  app.use('/api/research', (req, res, next) => {
-    const email = req.userEmail;
-    const fetchRoute = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
-    if (!email || req.method !== 'GET' || !fetchRoute) return next();
-    const send = res.json.bind(res);
-    res.json = (body) => {
-      if (body && Array.isArray(body.results)) db.claimProducts(email, body.results).catch((e) => console.error('claim failed:', e.message || e));
-      return send(body);
-    };
-    next();
-  });
   app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
@@ -527,7 +508,7 @@ module.exports = function (app) {
     }
 
     db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
-    db.saveSearch(q, list.length, req.userEmail).catch((e) => console.error('search save failed:', e.message || e));
+    db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
     res.json({ results: list.map(publicFields), cjFailed: cjResult.status === 'rejected', aliFailed: aliResult.status === 'rejected' });
   });
 
@@ -725,7 +706,7 @@ module.exports = function (app) {
   app.get('/api/research/rising', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so rising products cannot be tracked.' });
     try {
-      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
+      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
       res.json({ results, message: results.length ? '' : 'No rising products yet. The site saves each product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
     } catch (e) {
       console.error('rising failed:', e.message || e);
@@ -751,12 +732,16 @@ module.exports = function (app) {
         { name: 'Car', q: 'viral car accessories gadget you need' },
         { name: 'Fitness', q: 'viral fitness gadget home workout' },
         { name: 'Beauty', q: 'viral beauty tool tiktok made me buy it' },
-        { name: 'Home & LED', q: 'viral home gadget led lights tiktok' }
+        { name: 'Home & LED', q: 'viral home gadget led lights tiktok' },
+        { name: 'Tech', q: 'viral tech gadget tiktok made me buy it' },
+        { name: 'Baby & Kids', q: 'viral baby product tiktok made me buy it' },
+        { name: 'Outdoor & Travel', q: 'viral travel gadget camping must have' },
+        { name: 'Health', q: 'viral health wellness gadget massager tiktok' }
       ];
       const found = []; // { cat, id }
       let lastErr = null;
       for (const c of CATS) {
-        const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=25&order=viewCount&relevanceLanguage=en&publishedAfter='
+        const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=50&order=viewCount&relevanceLanguage=en&publishedAfter='
           + encodeURIComponent(since) + '&q=' + encodeURIComponent(c.q);
         const sj = await (await fetch(sUrl, { headers: H })).json();
         if (sj.error) {
@@ -778,8 +763,10 @@ module.exports = function (app) {
       }
       const now = Date.now();
       const byId = {};
+      const descById = {};
       items.forEach((v) => {
         const sn = v.snippet || {};
+        descById[v.id] = String(sn.description || '').slice(0, 250).toLowerCase();
         const views = Number((v.statistics || {}).viewCount) || 0;
         const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
         const th = sn.thumbnails || {};
@@ -792,17 +779,22 @@ module.exports = function (app) {
       });
       // leave out lists, compilations and hauls (many products in one video); keep them only if too few remain
       const LISTY = /\btop\s*\d+|\bbest\s*\d+|\b\d+\s+(best|products|gadgets|items|things|finds)|compilation|collection|\bhaul\b|\bvs\b/i;
+      const mostlyLatin = (t) => { const L = (t.match(/[A-Za-z]/g) || []).length; const O = (t.match(/[\u0370-\uFFFF]/g) || []).length; return L >= 8 && L > O * 2; };
+      // Only videos about a product: the title must say it is a product video, and must not be a vlog, tutorial, prank, etc.
+      const NOT_PRODUCT = /tutorial|how to|vlog|prank|challenge|reaction|\breacts?\b|story\s?time|asmr|gameplay|minecraft|roblox|fortnite|music video|official video|lyrics|trailer|podcast|interview|\bnews\b|live\s?stream|mukbang|get ready with me|grwm|makeover|transformation|haircut|hairstyle|day in my life|full day|\bfunny\b|\bfails?\b|\bmeme/i;
+      const PRODUCTY = /\bbuy\b|bought|purchas|\breview|worth it|\bviral\b|gadget|\bproducts?\b|must[- ]?have|amazon|temu|aliexpress|shein|walmart|unbox|\btest(ed|ing)?\b|\bdupes?\b|\bfinds?\b|\btried\b|\btrying\b|\bshop\b|\bdeals?\b|\bgear\b|\btool\b|accessor|essentials?|\bhack/i;
+      const isProductVideo = (v) => !NOT_PRODUCT.test(v.title.toLowerCase()) && PRODUCTY.test(v.title.toLowerCase() + ' ' + (descById[v.id] || ''));
       const used = new Set();
       const groups = [];
       for (const c of CATS) {
-        let list = found.filter((f) => f.cat === c.name).map((f) => byId[f.id]).filter((v) => v && !used.has(v.id));
+        let list = found.filter((f) => f.cat === c.name).map((f) => byId[f.id]).filter((v) => v && !used.has(v.id) && mostlyLatin(v.title) && isProductVideo(v));
         const single = list.filter((v) => !LISTY.test(v.title));
         if (single.length >= 3) list = single;
         const perChannel = {};
         list = list.sort((a, b) => b.viewsPerDay - a.viewsPerDay).filter((v) => {
           perChannel[v.channel] = (perChannel[v.channel] || 0) + 1;
-          return perChannel[v.channel] <= 1; // one video per channel in each list
-        }).slice(0, 5);
+          return perChannel[v.channel] <= 2; // at most 2 videos per channel in each list
+        }).slice(0, 10);
         list.forEach((v) => used.add(v.id));
         if (list.length) groups.push({ name: c.name, videos: list });
       }
@@ -853,7 +845,7 @@ module.exports = function (app) {
   app.get('/api/research/demand', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so demand growth cannot be tracked.' });
     try {
-      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({
+      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST })).map((p) => ({
         ...p, demand: demandDetail(p), competition: null, listedBySellers: '?', scoreParts: null, dataFlags: []
       }));
       res.json({ results, message: results.length ? '' : 'No demand growth yet. The site saves each AliExpress product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
@@ -867,8 +859,8 @@ module.exports = function (app) {
   app.get('/api/saved', async (req, res) => {
     if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on the server.' });
     try {
-      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST, email: req.userEmail });
-      res.json({ total: await db.count(req.userEmail), results });
+      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST });
+      res.json({ total: await db.count(), results });
     } catch (e) {
       console.error('saved list failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read saved products' });
@@ -879,7 +871,7 @@ module.exports = function (app) {
   app.get('/api/searches', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [] });
     try {
-      res.json({ results: await db.listSearches(req.query.limit, req.userEmail) });
+      res.json({ results: await db.listSearches(req.query.limit) });
     } catch (e) {
       console.error('searches list failed:', e.message || e);
       res.json({ results: [] });
