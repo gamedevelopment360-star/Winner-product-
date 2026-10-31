@@ -25,7 +25,11 @@ if (!password) {
 
 require('./googleauth')(app);
 require('./research')(app);
-const site = path.join(__dirname, 'Pubic');
+// Find the website folder whatever its spelling on GitHub (public, Public or Pubic).
+const fs = require('fs');
+const dirs = ['public', 'Public', 'Pubic'].map((d) => path.join(__dirname, d));
+const site = dirs.find((d) => fs.existsSync(path.join(d, 'landing.html'))) || dirs.find((d) => fs.existsSync(d)) || dirs[0];
+console.log('Serving website files from ' + site);
 // The first page people see is the landing page. The dashboard lives at /app.
 app.get('/', (req, res) => res.sendFile(path.join(site, 'landing.html')));
 app.get('/app', (req, res) => res.sendFile(path.join(site, 'index.html')));
