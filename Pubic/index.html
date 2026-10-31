@@ -80,7 +80,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <div class="nh"><h1>Winner Finder</h1><button class="x" id="closeNav">&#10005; Close</button></div>
  <button data-p="dash" class="on">Dashboard</button>
  <button data-p="win">Winning Products</button>
- <button data-p="tt">TikTok Ads Research</button>
  <button data-p="yt">YouTube Research</button>
  <button data-p="sup">Suppliers (AliExpress / CJ)</button>
  <button data-p="calc">Profit Calculator</button>
@@ -121,11 +120,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <div id="wOut" class="msg">Pick a button or search a keyword.</div>
 </section>
 
-<section class="page" id="tt">
- <h2>TikTok Ads Research</h2>
- <div class="card msg">Nothing is connected for TikTok yet. Your server has no TikTok route, so this section is a placeholder until one is added.</div>
-</section>
-
 <section class="page" id="yt">
  <h2>YouTube Research</h2>
  <div class="row"><button class="btn" id="ytGo">Trending Products (YouTube videos)</button></div>
@@ -163,8 +157,18 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 
 <section class="page" id="set">
  <h2>Settings</h2>
- <div class="card"><div>Server version: <b id="ver">–</b></div>
- <div class="meta">API keys and limits (CJ_API_KEY, YOUTUBE_API_KEY, MAX_COST, MIN_PROFIT, USE_CJ) are set as environment variables on Render, not here.</div></div>
+ <div class="card">
+  <b>Account</b>
+  <div class="meta" id="setAcct">Not signed in</div>
+  <div class="row" style="margin-top:10px"><button class="btn alt" id="setLogout">Log out</button></div>
+ </div>
+ <div class="card" style="margin-top:12px">
+  <b>Profit calculator defaults</b>
+  <label>Shipping ($)</label><input id="dShip" type="number" step="0.01">
+  <label>Ad cost per sale ($)</label><input id="dAd" type="number" step="0.01">
+  <div class="row" style="margin-top:12px"><button class="btn" id="setSave">Save</button></div>
+  <div class="meta" id="setMsg">Saved on this device only.</div>
+ </div>
 </section>
 
 </main>
@@ -213,7 +217,6 @@ document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () =>
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
   if (b.dataset.p === 'hist') loadHist();
-  if (b.dataset.p === 'set') api('/api/version').then((j) => $('#ver').textContent = j.version).catch(() => {});
 });
 $('#menu').onclick = () => setNav(!nav.classList.contains('open'));
 $('#closeNav').onclick = () => setNav(false);
@@ -292,6 +295,21 @@ async function loadHist() {
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 }
 
+// settings: calculator defaults are kept on this device
+function loadPrefs() { try { return JSON.parse(localStorage.getItem('wf_prefs')) || {}; } catch (e) { return {}; } }
+function applyPrefs() {
+  const p = loadPrefs();
+  if (p.ship != null) { $('#cShip').value = p.ship; $('#dShip').value = p.ship; }
+  if (p.ad != null) { $('#cAd').value = p.ad; $('#dAd').value = p.ad; }
+  calc();
+}
+$('#setSave').onclick = () => {
+  const ship = parseFloat($('#dShip').value), ad = parseFloat($('#dAd').value);
+  try { localStorage.setItem('wf_prefs', JSON.stringify({ ship: isNaN(ship) ? 4 : ship, ad: isNaN(ad) ? 0 : ad })); } catch (e) {}
+  applyPrefs(); $('#setMsg').textContent = 'Saved on this device only.';
+};
+applyPrefs();
+
 // accounts and subscription (same routes as your old page)
 let me = { billing: false, subscribed: true }, started = false;
 async function postJson(url, body) {
@@ -307,6 +325,8 @@ function renderAccount() {
   $('#authbox').hidden = !(me.billing && !me.loggedIn);
   $('#subbox').hidden = !(me.billing && me.loggedIn && !me.subscribed);
   if (me.billing) $('#priceText').textContent = (me.price || '$30 per month') + '. Cancel any time.';
+  $('#setAcct').textContent = me.loggedIn ? ((me.name ? me.name + ' · ' : '') + me.email) : 'Not signed in';
+  $('#setLogout').hidden = !me.loggedIn;
   const a = $('#acct');
   if (me.loggedIn) {
     a.hidden = false;
@@ -336,6 +356,7 @@ $('#authSignup').onclick = () => authSubmit('signup');
 $('#authPass').onkeydown = (e) => { if (e.key === 'Enter') authSubmit('login'); };
 $('#subBtn').onclick = () => goTo('/api/billing/checkout', '#subMsg');
 $('#subLogout').onclick = logout;
+$('#setLogout').onclick = logout;
 $('#acct').onclick = (e) => {
   if (e.target.id === 'logoutBtn') logout();
   if (e.target.id === 'manageBtn') goTo('/api/billing/portal', '#subMsg');
