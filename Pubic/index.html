@@ -301,14 +301,14 @@ async function postJson(url, body) {
   return j;
 }
 function renderAccount() {
-  const locked = me.billing && (!me.loggedIn || !me.subscribed);
+  const locked = !!(me.billing && (!me.loggedIn || !me.subscribed));
   document.body.classList.toggle('locked', locked);
   $('#gate').hidden = !locked;
   $('#authbox').hidden = !(me.billing && !me.loggedIn);
   $('#subbox').hidden = !(me.billing && me.loggedIn && !me.subscribed);
   if (me.billing) $('#priceText').textContent = (me.price || '$30 per month') + '. Cancel any time.';
   const a = $('#acct');
-  if (me.billing && me.loggedIn) {
+  if (me.loggedIn) {
     a.hidden = false;
     a.innerHTML = '<div>' + esc(me.email) + (me.admin ? ' (owner)' : me.subscribed ? ' · Subscribed' : '') + '</div>' +
       (me.subscribed && !me.admin ? '<button class="chip" id="manageBtn">Manage billing</button> ' : '') + '<button class="chip" id="logoutBtn">Log out</button>';
@@ -330,7 +330,7 @@ async function goTo(url, msgId) {
   $(msgId).textContent = 'Opening the secure payment page...';
   try { location.href = (await postJson(url)).url; } catch (e) { $(msgId).textContent = e.message; }
 }
-async function logout() { try { await postJson('/api/auth/logout'); } catch (_) {} started = false; await refreshMe(); }
+async function logout() { try { await postJson('/api/auth/logout'); } catch (_) {} location.href = '/'; }
 $('#authLogin').onclick = () => authSubmit('login');
 $('#authSignup').onclick = () => authSubmit('signup');
 $('#authPass').onkeydown = (e) => { if (e.key === 'Enter') authSubmit('login'); };
