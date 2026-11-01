@@ -908,6 +908,16 @@ module.exports = function (app) {
     }
   });
 
+  // Open /api/history-test: saves one test search for you and shows the exact error if it fails.
+  app.get('/api/history-test', async (req, res) => {
+    const out = { signedInAs: req.userEmail || null, databaseOn: db.enabled(), version: 'relevance-v9-users' };
+    try { await db.saveSearch('history-test', 0, req.userEmail); out.testSaved = true; }
+    catch (e) { out.testSaved = false; out.saveError = String(e.message || e).slice(0, 200); }
+    try { out.myHistory = (await db.listSearches(5, req.userEmail)).map((r) => r.query); }
+    catch (e) { out.listError = String(e.message || e).slice(0, 200); }
+    res.json(out);
+  });
+
   app.get('/api/searches', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [] });
     try {
