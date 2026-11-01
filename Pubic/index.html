@@ -271,20 +271,25 @@ async function loadDash() {
   $('#sVideos').textContent = num(videoCount());
 }
 
+// If some products are ticked, copy only those. If none are ticked, copy the whole list.
+function linksToCopy(all) { return picked.size ? Array.from(picked.values()) : all.map(productUrl); }
+function copiedText(n) { return 'Copied ' + n + (picked.size ? ' ticked' : '') + ' link' + (n === 1 ? '' : 's'); }
 $('#copyAll').onclick = () => {
   const b = $('#copyAll');
-  if (!dashList.length) return;
-  copyText(dashList.map(productUrl).join('\n'))
-    .then(() => flash(b, 'Copied ' + dashList.length + ' links', 'Copy products link'))
+  const links = linksToCopy(dashList);
+  if (!links.length) return;
+  copyText(links.join('\n'))
+    .then(() => flash(b, copiedText(links.length), 'Copy products link'))
     .catch(() => flash(b, 'Copy failed. Try again', 'Copy products link'));
 };
 
 // winning products
 $('#wCopyAll').onclick = () => {
   const b = $('#wCopyAll');
-  if (!winList.length) return;
-  copyText(winList.map(productUrl).join('\n'))
-    .then(() => flash(b, 'Copied ' + winList.length + ' links', 'Copy products link'))
+  const links = linksToCopy(winList);
+  if (!links.length) return;
+  copyText(links.join('\n'))
+    .then(() => flash(b, copiedText(links.length), 'Copy products link'))
     .catch(() => flash(b, 'Copy failed. Try again', 'Copy products link'));
 };
 document.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => load($('#wOut'), b.dataset.w));
