@@ -913,7 +913,13 @@ module.exports = function (app) {
       const t = await c.query("SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_name = 'searches'");
       const has = t.rows[0].n > 0;
       const saved = has ? (await c.query('SELECT COUNT(*)::int AS n FROM searches')).rows[0].n : 0;
-      res.json({ ok: true, connected: true, searchesTableExists: has, savedHistoryRows: saved });
+      // run the same query the History tab uses, and show the newest rows
+      let listOk = true, listError = null, newest = [];
+      try {
+        const r = await c.query('SELECT LOWER(query) AS query, COUNT(*)::int AS times, MAX(searched_at) AS last_time FROM searches GROUP BY LOWER(query) ORDER BY MAX(searched_at) DESC LIMIT 5');
+        newest = r.rows.map((x) => x.query + ' (' + x.times + 'x)');
+      } catch (e2) { listOk = false; listError = String(e2.message || e2).slice(0, 160); }
+      res.json({ ok: true, connected: true, searchesTableExists: has, savedHistoryRows: saved, historyQueryWorks: listOk, historyQueryError: listError, newest, appThinksDbIsOn: db.enabled() });
     } catch (e) {
       res.json({ ok: false, connected: false, code: e.code || null, problem: String(e.message || e).split(url).join('[database url]').slice(0, 200) });
     } finally {
