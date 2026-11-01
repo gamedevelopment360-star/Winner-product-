@@ -479,37 +479,6 @@ function summarizeVideos(items, query) {
 
 // ---------- routes ----------
 module.exports = function (app) {
-  // ---------- history: save what the user does (button taps and video checks) ----------
-  // Keyword searches are already saved by the search route. This adds the rest, so the Search History tab shows it.
-  const SEASON_NAMES = { summer: 'summer', winter: 'winter', christmas: 'christmas', halloween: 'halloween', valentine: "valentine's", backtoschool: 'back to school' };
-  function historyLabel(req) {
-    const p = req.path.replace(/\/+$/, '');
-    if (p === '/winners') return 'winning products';
-    if (p.startsWith('/winners/')) return SEASON_NAMES[p.slice(9).toLowerCase()] || null;
-    if (p === '/trending') return 'aliexpress picks';
-    if (p === '/rising') return 'rising (new sellers)';
-    if (p === '/demand') return 'demand (orders growth)';
-    if (p === '/youtube-trending') return 'youtube trending videos';
-    if (p === '/video') { const q = String(req.query.q || '').trim().slice(0, 60); return q ? 'videos: ' + q : null; }
-    return null;
-  }
-  app.use('/api/research', (req, res, next) => {
-    const label = historyLabel(req);
-    if (!label) return next();
-    const send = res.json.bind(res);
-    res.json = (body) => {
-      try {
-        if (res.statusCode < 400 && body && !body.error) {
-          const n = Array.isArray(body.results) ? body.results.length : Array.isArray(body.videos) ? body.videos.length : null;
-          db.saveSearch(label, n).catch((e) => console.error('history save failed:', e.message || e));
-        }
-      } catch (e) { /* history must never break a button */ }
-      return send(body);
-    };
-    next();
-  });
-  // ---------- end history ----------
-
   app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
