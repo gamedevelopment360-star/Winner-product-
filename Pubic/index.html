@@ -97,7 +97,7 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <div class="card stat"><b id="sVideos">–</b><span>Trending videos</span></div>
   <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
  </div>
- <h2>Top saved products</h2>
+ <h2 id="dTopH" hidden>Saved products</h2>
  <div id="dTop" class="msg">Loading…</div>
 </section>
 
@@ -199,7 +199,7 @@ function product(p) {
 }
 function list(el, results, empty) {
   el.className = results && results.length ? '' : 'msg';
-  el.innerHTML = results && results.length ? results.map(product).join('') : esc(empty || 'Nothing found.');
+  el.innerHTML = results && results.length ? results.map(product).join('') : esc(empty == null ? 'Nothing found.' : empty);
 }
 async function load(el, url, empty) {
   el.className = 'msg'; el.textContent = 'Loading… this can take a while.';
@@ -223,17 +223,31 @@ $('#closeNav').onclick = () => setNav(false);
 $('#scrim').onclick = () => setNav(false);
 
 // dashboard
+function videoCount() { try { return parseInt(localStorage.getItem('wf_videos'), 10) || 0; } catch (e) { return 0; } }
 async function loadDash() {
-  api('/api/saved?sort=score&limit=6').then((j) => { $('#sSaved').textContent = num(j.total); list($('#dTop'), j.results.slice(0, 6), 'Nothing here yet. Open Winning Products and fetch some, and they will be saved here.'); })
+  api('/api/saved?sort=score&limit=500').then((j) => { $('#sSaved').textContent = num(j.results.length); list($('#dTop'), j.results, ''); $('#dTopH').hidden = !j.results.length; })
     .catch((e) => { $('#dTop').textContent = e.message; });
   api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
-  api('/api/searches?limit=20').then((j) => $('#sSearch').textContent = num((j.results || []).length)).catch(() => {});
-  api('/api/research/youtube-trending').then((j) => $('#sVideos').textContent = num((j.videos || []).length)).catch(() => {});
+  allHist().then((h) => $('#sSearch').textContent = num(h.length));
+  $('#sVideos').textContent = num(videoCount());
 }
 
 // winning products
 document.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => load($('#wOut'), b.dataset.w));
-function doSearch() { const q = $('#q').value.trim(); if (q) load($('#wOut'), '/api/research?q=' + encodeURIComponent(q)); }
+// Search history is kept on this device and merged with what the server saved.
+function localHist() { try { return JSON.parse(localStorage.getItem('wf_hist')) || []; } catch (e) { return []; } }
+function addHist(q) {
+  const h = localHist().filter((x) => x.toLowerCase() !== q.toLowerCase()); h.unshift(q);
+  try { localStorage.setItem('wf_hist', JSON.stringify(h.slice(0, 50))); } catch (e) {}
+}
+async function allHist() {
+  let srv = [];
+  try { const j = await api('/api/searches?limit=50'); srv = (j.results || []).map((r) => typeof r === 'string' ? r : (r.q || r.query || r.keyword || r.term || '')); } catch (e) {}
+  const seen = new Set(), out = [];
+  localHist().concat(srv).forEach((w) => { const k = String(w).trim().toLowerCase(); if (k && !seen.has(k)) { seen.add(k); out.push(String(w).trim()); } });
+  return out;
+}
+function doSearch() { const q = $('#q').value.trim(); if (q) { addHist(q); load($('#wOut'), '/api/research?q=' + encodeURIComponent(q)); } }
 $('#go').onclick = doSearch;
 $('#q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
 
@@ -247,7 +261,7 @@ function videos(el, vids) {
 }
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
-  try { const j = await api('/api/research/youtube-trending'); videos(el, j.videos); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+  try { const j = await api('/api/research/youtube-trending'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 };
 $('#vGo').onclick = async () => {
   const q = $('#vq').value.trim(); if (!q) return;
@@ -262,8 +276,8 @@ $('#vGo').onclick = async () => {
 async function loadSup(src) {
   const el = $('#sOut'); el.className = 'msg'; el.textContent = 'Loading…';
   try {
-    const j = await api('/api/saved?limit=100');
-    list(el, (j.results || []).filter((p) => !src || (p.source || 'cj') === src), 'Nothing here yet. Fetch products in Winning Products and they will show up here.');
+    const j = await api('/api/saved?limit=500');
+    list(el, (j.results || []).filter((p) => !src || (p.source || 'cj') === src), '');
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 }
 document.querySelectorAll('[data-s]').forEach((b) => b.onclick = () => loadSup(b.dataset.s));
@@ -281,18 +295,12 @@ function calc() {
 
 // history
 async function loadHist() {
-  const el = $('#hOut');
-  try {
-    const j = await api('/api/searches?limit=50'), rows = j.results || [];
-    el.className = rows.length ? 'row' : 'msg';
-    el.innerHTML = rows.length ? rows.map((r) => {
-      const w = typeof r === 'string' ? r : (r.q || r.query || r.keyword || r.term || '');
-      return '<button class="chip" data-h="' + esc(w) + '">' + esc(w) + '</button>';
-    }).join('') : 'No searches yet.';
-    el.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => {
-      document.querySelector('nav [data-p=win]').click(); $('#q').value = b.dataset.h; doSearch();
-    });
-  } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+  const el = $('#hOut'), words = await allHist();
+  el.className = words.length ? 'row' : 'msg';
+  el.innerHTML = words.length ? words.map((w) => '<button class="chip" data-h="' + esc(w) + '">' + esc(w) + '</button>').join('') : 'No searches yet.';
+  el.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => {
+    document.querySelector('nav [data-p=win]').click(); $('#q').value = b.dataset.h; doSearch();
+  });
 }
 
 // settings: calculator defaults are kept on this device
