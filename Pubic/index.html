@@ -29,6 +29,11 @@ input{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line
 .item img{width:84px;height:84px;object-fit:cover;border-radius:8px;background:#222;flex-shrink:0}
 .item a{color:var(--link);text-decoration:none;font-weight:600}
 .cp{margin-top:8px;padding:6px 12px;font-size:13px}
+.pick{display:flex;align-items:flex-start;padding-top:2px}
+.pk{flex:none;min-width:0;width:24px;height:24px;padding:0;margin:0;accent-color:#2ecc71}
+#pickbar{position:fixed;left:0;right:0;bottom:0;z-index:20;display:none;gap:10px;align-items:center;justify-content:space-between;background:var(--panel);border-top:1px solid var(--line);padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+#pickbar.on{display:flex}
+#pickbar span{font-weight:600}
 .meta{color:var(--mute);font-size:13px;margin-top:3px}
 .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:#232834;margin-right:6px;color:var(--text)}
 .score{color:var(--accent);font-weight:700}
@@ -213,6 +218,7 @@ document.addEventListener('click', (e) => {
   if (!b) return;
   copyText(b.dataset.url).then(() => flash(b, 'Copied', 'Copy link')).catch(() => flash(b, 'Copy failed', 'Copy link'));
 });
+const picked = new Map(); // product id -> supplier link, for the products the user ticked
 function product(p) {
   const bits = [];
   if (p.cost != null) bits.push('Cost $' + Number(p.cost).toFixed(2));
@@ -220,7 +226,7 @@ function product(p) {
   if (p.sold != null) bits.push(num(p.sold) + ' sold');
   if (p.rating != null) bits.push('★ ' + p.rating);
   if (p.growth != null) bits.push('+' + p.growth + ' growth');
-  return '<div class="card item">' + (p.image ? '<img src="' + esc(p.image) + '" alt="">' : '') +
+  return '<div class="card item">' + (p.pid ? '<label class="pick"><input type="checkbox" class="pk" data-pid="' + esc(p.pid) + '" data-url="' + esc(productUrl(p)) + '"' + (picked.has(String(p.pid)) ? ' checked' : '') + '></label>' : '') + (p.image ? '<img src="' + esc(p.image) + '" alt="">' : '') +
     '<div><div>' + esc(p.name) + '</div>' +
     '<div class="meta"><span class="badge">' + esc((p.source || 'cj').toUpperCase()) + '</span>' +
     (p.score != null ? 'Score <span class="score">' + esc(p.score) + '</span> · ' : '') + bits.join(' · ') + '</div>' +
@@ -421,6 +427,32 @@ $('#acct').onclick = (e) => {
     for (let i = 0; i < 15 && !me.subscribed; i++) { await new Promise((r) => setTimeout(r, 2000)); await refreshMe(); }
     history.replaceState(null, '', '/app');
   }
+})();
+</script>
+<div id="pickbar"><span id="pickcount">0 selected</span><div style="display:flex;gap:8px"><button class="btn alt" id="pickclear" type="button">Clear</button><button class="btn" id="pickcopy" type="button">Copy links</button></div></div>
+<script>
+(function () {
+  var bar = document.getElementById('pickbar'), count = document.getElementById('pickcount'), copyBtn = document.getElementById('pickcopy');
+  function refresh() { count.textContent = picked.size + ' selected'; bar.classList.toggle('on', picked.size > 0); }
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || !el.classList || !el.classList.contains('pk')) return;
+    var pid = el.getAttribute('data-pid');
+    if (el.checked) picked.set(pid, el.getAttribute('data-url')); else picked.delete(pid);
+    refresh();
+  });
+  document.getElementById('pickclear').addEventListener('click', function () {
+    picked.clear();
+    document.querySelectorAll('.pk').forEach(function (c) { c.checked = false; });
+    refresh();
+  });
+  copyBtn.addEventListener('click', function () {
+    var links = Array.from(picked.values());
+    if (!links.length) return;
+    copyText(links.join('\n')).then(function () { copyBtn.textContent = 'Copied ' + links.length; },
+      function () { copyBtn.textContent = 'Copy failed'; })
+    .then(function () { setTimeout(function () { copyBtn.textContent = 'Copy links'; }, 2000); });
+  });
 })();
 </script>
 </body>
