@@ -83,7 +83,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <button data-p="yt">YouTube Research</button>
  <button data-p="sup">Suppliers (AliExpress / CJ)</button>
  <button data-p="calc">Profit Calculator</button>
- <button data-p="hist">Search History</button>
  <button data-p="set">Settings</button>
  <div id="acct" hidden></div>
 </nav>
@@ -148,11 +147,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <div class="out" id="cOut">Enter a selling price and cost.</div>
   <div class="meta">Payment fee is 2.9% + $0.30, same as the server. Shipping is a rough guess unless you know the real figure.</div>
  </div>
-</section>
-
-<section class="page" id="hist">
- <h2>Search History</h2>
- <div id="hOut" class="msg">Loading…</div>
 </section>
 
 <section class="page" id="set">
@@ -222,7 +216,6 @@ document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () =>
   $('#ttl').textContent = b.textContent; setNav(false);
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
-  if (b.dataset.p === 'hist') loadHist();
 });
 $('#menu').onclick = () => setNav(!nav.classList.contains('open'));
 $('#closeNav').onclick = () => setNav(false);
@@ -298,16 +291,6 @@ function calc() {
     '</b> (' + (profit / sell * 100).toFixed(1) + '% margin)<div class="meta">Payment fee $' + fee.toFixed(2) + '</div>';
 }
 ['#cSell', '#cCost', '#cShip', '#cAd'].forEach((s) => $(s).oninput = calc);
-
-// history
-async function loadHist() {
-  const el = $('#hOut'), words = await allHist();
-  el.className = words.length ? 'row' : 'msg';
-  el.innerHTML = words.length ? words.map((w) => '<button class="chip" data-h="' + esc(w) + '">' + esc(w) + '</button>').join('') : 'No searches yet.';
-  el.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => {
-    document.querySelector('nav [data-p=win]').click(); $('#q').value = b.dataset.h; doSearch();
-  });
-}
 
 // settings: calculator defaults are kept on this device
 function loadPrefs() { try { return JSON.parse(localStorage.getItem('wf_prefs')) || {}; } catch (e) { return {}; } }
