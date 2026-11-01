@@ -242,8 +242,10 @@ async function saveSearch(query, results, email) {
   if (!(await init())) return;
   const q = String(query).slice(0, 80);
   const n = results == null ? null : results;
-  await getPool().query('INSERT INTO searches (query, results) VALUES ($1, $2)', [q, n]);
+  // The person's own history comes first, so a problem with the old shared table can never block it.
   if (email) await getPool().query('INSERT INTO user_searches (email, query, results) VALUES ($1, $2, $3)', [String(email).toLowerCase(), q, n]);
+  try { await getPool().query('INSERT INTO searches (query, results) VALUES ($1, $2)', [q, n]); }
+  catch (e) { console.error('shared search log failed:', e.message || e); }
 }
 
 async function listSearches(limit, email) {
