@@ -163,6 +163,12 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <div class="row" style="margin-top:10px"><button class="btn alt" id="setLogout">Log out</button></div>
  </div>
  <div class="card" style="margin-top:12px">
+  <b>Check my history</b>
+  <div class="meta">Shows whether you are signed in and what has been saved.</div>
+  <div class="row" style="margin-top:10px"><button class="btn alt" id="chk">Check my history</button></div>
+  <pre id="chkOut" class="meta" style="white-space:pre-wrap;margin:0"></pre>
+ </div>
+ <div class="card" style="margin-top:12px">
   <b>Profit calculator defaults</b>
   <label>Shipping ($)</label><input id="dShip" type="number" step="0.01">
   <label>Ad cost per sale ($)</label><input id="dAd" type="number" step="0.01">
@@ -317,6 +323,13 @@ $('#setSave').onclick = () => {
   applyPrefs(); $('#setMsg').textContent = 'Saved on this device only.';
 };
 applyPrefs();
+$('#chk').onclick = async () => {
+  const out = $('#chkOut'); let t = ''; out.textContent = 'Checking...';
+  try { const m = await (await fetch('/api/auth/me')).json(); t += 'Signed in: ' + (m.loggedIn ? m.email : 'NO') + '\n'; } catch (e) { t += 'Sign-in check failed\n'; }
+  try { const r = await fetch('/api/searches?limit=5'); const j = await r.json(); t += 'Saved on server (' + r.status + '): ' + JSON.stringify((j.results || []).map((x) => x.query || x)) + '\n'; } catch (e) { t += 'Server history failed: ' + e.message + '\n'; }
+  t += 'Saved on this phone: ' + JSON.stringify(localHist().slice(0, 5));
+  out.textContent = t;
+};
 
 // accounts and subscription (same routes as your old page)
 let me = { billing: false, subscribed: true }, started = false;
