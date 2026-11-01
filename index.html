@@ -28,6 +28,7 @@ input{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line
 .item{display:flex;gap:12px;margin-bottom:10px}
 .item img{width:84px;height:84px;object-fit:cover;border-radius:8px;background:#222;flex-shrink:0}
 .item a{color:var(--link);text-decoration:none;font-weight:600}
+.cp{margin-top:8px;padding:6px 12px;font-size:13px}
 .meta{color:var(--mute);font-size:13px;margin-top:3px}
 .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:#232834;margin-right:6px;color:var(--text)}
 .score{color:var(--accent);font-weight:700}
@@ -83,7 +84,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <button data-p="yt">YouTube Research</button>
  <button data-p="sup">Suppliers (AliExpress / CJ)</button>
  <button data-p="calc">Profit Calculator</button>
- <button data-p="hist">Search History</button>
  <button data-p="set">Settings</button>
  <div id="acct" hidden></div>
 </nav>
@@ -98,6 +98,7 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
  </div>
  <h2 id="dTopH" hidden>Saved products</h2>
+ <div class="row" id="dCopyRow" hidden><button class="btn" id="copyAll">Copy products link</button></div>
  <div id="dTop" class="msg">Loading…</div>
 </section>
 
@@ -117,6 +118,7 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <button class="chip" data-w="/api/research/winners/backtoschool">Back to School</button>
  </div>
  <div class="row"><input id="q" placeholder="Search a product keyword"><button class="btn" id="go">Search</button></div>
+ <div class="row" id="wCopyRow" hidden><button class="btn" id="wCopyAll">Copy products link</button></div>
  <div id="wOut" class="msg">Pick a button or search a keyword.</div>
 </section>
 
@@ -148,11 +150,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <div class="out" id="cOut">Enter a selling price and cost.</div>
   <div class="meta">Payment fee is 2.9% + $0.30, same as the server. Shipping is a rough guess unless you know the real figure.</div>
  </div>
-</section>
-
-<section class="page" id="hist">
- <h2>Search History</h2>
- <div id="hOut" class="msg">Loading…</div>
 </section>
 
 <section class="page" id="set">
@@ -189,6 +186,33 @@ async function api(url) {
   if (!r.ok) throw new Error(j.error || 'Request failed (' + r.status + ')');
   return j;
 }
+// supplier link for a product (AliExpress ids are saved as ali_<id>, everything else is CJ)
+function productUrl(p) {
+  const id = String(p.pid || '');
+  return id.indexOf('ali_') === 0
+    ? 'https://www.aliexpress.com/item/' + id.slice(4) + '.html'
+    : 'https://cjdropshipping.com/product/p-' + id + '.html';
+}
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  return new Promise((resolve, reject) => {
+    const t = document.createElement('textarea');
+    t.value = text; t.style.position = 'fixed'; t.style.opacity = '0';
+    document.body.appendChild(t); t.select();
+    try { document.execCommand('copy') ? resolve() : reject(); } catch (e) { reject(e); }
+    document.body.removeChild(t);
+  });
+}
+function flash(btn, text, back) {
+  btn.textContent = text;
+  setTimeout(() => { btn.textContent = back; }, 1500);
+}
+// one tap on any "Copy link" button copies that product's link
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('.cp');
+  if (!b) return;
+  copyText(b.dataset.url).then(() => flash(b, 'Copied', 'Copy link')).catch(() => flash(b, 'Copy failed', 'Copy link'));
+});
 function product(p) {
   const bits = [];
   if (p.cost != null) bits.push('Cost $' + Number(p.cost).toFixed(2));
@@ -201,15 +225,18 @@ function product(p) {
     '<div class="meta"><span class="badge">' + esc((p.source || 'cj').toUpperCase()) + '</span>' +
     (p.score != null ? 'Score <span class="score">' + esc(p.score) + '</span> · ' : '') + bits.join(' · ') + '</div>' +
     (p.competition ? '<div class="meta">Competition: ' + esc(typeof p.competition === 'object' ? (p.competition.label || p.competition.level || '') : p.competition) + '</div>' : '') +
+    '<button class="chip cp" data-url="' + esc(productUrl(p)) + '">Copy link</button>' +
     '</div></div>';
 }
 function list(el, results, empty) {
   el.className = results && results.length ? '' : 'msg';
   el.innerHTML = results && results.length ? results.map(product).join('') : esc(empty == null ? 'Nothing found.' : empty);
 }
+let winList = [];
 async function load(el, url, empty) {
   el.className = 'msg'; el.textContent = 'Loading… this can take a while.';
-  try { const j = await api(url); list(el, j.results, j.message || empty); }
+  if (el.id === 'wOut') { winList = []; $('#wCopyRow').hidden = true; }
+  try { const j = await api(url); list(el, j.results, j.message || empty); if (el.id === 'wOut') { winList = j.results || []; $('#wCopyRow').hidden = !winList.length; } }
   catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 }
 
@@ -222,7 +249,6 @@ document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () =>
   $('#ttl').textContent = b.textContent; setNav(false);
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
-  if (b.dataset.p === 'hist') loadHist();
 });
 $('#menu').onclick = () => setNav(!nav.classList.contains('open'));
 $('#closeNav').onclick = () => setNav(false);
@@ -230,15 +256,31 @@ $('#scrim').onclick = () => setNav(false);
 
 // dashboard
 function videoCount() { try { return parseInt(localStorage.getItem('wf_videos'), 10) || 0; } catch (e) { return 0; } }
+let dashList = [];
 async function loadDash() {
-  api('/api/saved?sort=score&limit=500').then((j) => { $('#sSaved').textContent = num(j.results.length); list($('#dTop'), j.results, ''); $('#dTopH').hidden = !j.results.length; })
+  api('/api/saved?sort=score&limit=500').then((j) => { $('#sSaved').textContent = num(j.results.length); dashList = j.results; list($('#dTop'), j.results, ''); $('#dTopH').hidden = !j.results.length; $('#dCopyRow').hidden = !j.results.length; })
     .catch((e) => { $('#dTop').textContent = e.message; });
   api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
   allHist().then((h) => $('#sSearch').textContent = num(h.length));
   $('#sVideos').textContent = num(videoCount());
 }
 
+$('#copyAll').onclick = () => {
+  const b = $('#copyAll');
+  if (!dashList.length) return;
+  copyText(dashList.map(productUrl).join('\n'))
+    .then(() => flash(b, 'Copied ' + dashList.length + ' links', 'Copy products link'))
+    .catch(() => flash(b, 'Copy failed. Try again', 'Copy products link'));
+};
+
 // winning products
+$('#wCopyAll').onclick = () => {
+  const b = $('#wCopyAll');
+  if (!winList.length) return;
+  copyText(winList.map(productUrl).join('\n'))
+    .then(() => flash(b, 'Copied ' + winList.length + ' links', 'Copy products link'))
+    .catch(() => flash(b, 'Copy failed. Try again', 'Copy products link'));
+};
 document.querySelectorAll('[data-w]').forEach((b) => b.onclick = () => load($('#wOut'), b.dataset.w));
 // Search history is kept on this device and merged with what the server saved.
 function localHist() { try { return JSON.parse(localStorage.getItem('wf_hist')) || []; } catch (e) { return []; } }
@@ -298,16 +340,6 @@ function calc() {
     '</b> (' + (profit / sell * 100).toFixed(1) + '% margin)<div class="meta">Payment fee $' + fee.toFixed(2) + '</div>';
 }
 ['#cSell', '#cCost', '#cShip', '#cAd'].forEach((s) => $(s).oninput = calc);
-
-// history
-async function loadHist() {
-  const el = $('#hOut'), words = await allHist();
-  el.className = words.length ? 'row' : 'msg';
-  el.innerHTML = words.length ? words.map((w) => '<button class="chip" data-h="' + esc(w) + '">' + esc(w) + '</button>').join('') : 'No searches yet.';
-  el.querySelectorAll('[data-h]').forEach((b) => b.onclick = () => {
-    document.querySelector('nav [data-p=win]').click(); $('#q').value = b.dataset.h; doSearch();
-  });
-}
 
 // settings: calculator defaults are kept on this device
 function loadPrefs() { try { return JSON.parse(localStorage.getItem('wf_prefs')) || {}; } catch (e) { return {}; } }
