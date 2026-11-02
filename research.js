@@ -520,7 +520,7 @@ module.exports = function (app) {
 
   app.get('/api/version', (req, res) => res.json({
     version: 'relevance-v9-users',
-    databaseFile: (typeof db.cacheGet === 'function' && typeof db.claimProducts === 'function') ? 'up to date' : 'OLD: upload the new db.js to the main folder'
+    databaseFile: (typeof db.cacheGet === 'function' && typeof db.claimProducts === 'function' && typeof db.saveVideos === 'function') ? 'up to date' : 'OLD: upload the new db.js to the main folder'
   }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
@@ -868,10 +868,29 @@ module.exports = function (app) {
     }
   });
 
-  // The YouTube videos saved on your account, newest first.
+  // The YouTube videos saved on your account, newest first. Shows the exact reason if something is wrong.
   app.get('/api/research/my-videos', async (req, res) => {
-    try { res.json({ videos: (req.userEmail && db.listVideos) ? await db.listVideos(req.userEmail, req.query.limit) : [] }); }
-    catch (e) { console.error('my videos failed:', e.message || e); res.json({ videos: [] }); }
+    if (!req.userEmail) return res.status(401).json({ error: 'You are not signed in, so videos cannot be saved. Sign in with Google.' });
+    if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on Render.' });
+    if (typeof db.saveVideos !== 'function' || typeof db.listVideos !== 'function') {
+      return res.status(500).json({ error: 'The db.js on the server is old. Upload the new db.js to the main folder (next to server.js).' });
+    }
+    try {
+      let videos = await db.listVideos(req.userEmail, req.query.limit);
+      if (!videos.length) {
+        // nothing saved yet: take the list the site already has and save it to this account
+        let src = trendVideos.data || null;
+        if (!src && db.cacheGet) { const c = await db.cacheGet('yt-trending').catch(() => null); src = c && c.data; }
+        if (src && Array.isArray(src.videos) && src.videos.length) {
+          await db.saveVideos(req.userEmail, src.videos);
+          videos = await db.listVideos(req.userEmail, req.query.limit);
+        }
+      }
+      res.json({ videos });
+    } catch (e) {
+      console.error('my videos failed:', e.message || e);
+      res.status(500).json({ error: 'Could not read saved videos: ' + String(e.message || e).slice(0, 160) });
+    }
   });
 
   // Video interest for one product from YouTube. /api/research/video?q=product name
