@@ -1,5 +1,9 @@
 // Winner Finder: a separate small website. Not connected to the Shopify app.
 // Set these in Render (Environment): CJ_API_KEY and SITE_PASSWORD.
+// One failing request must never take the whole site down.
+process.on('unhandledRejection', (e) => console.error('Unhandled error:', e && e.stack ? e.stack : e));
+process.on('uncaughtException', (e) => console.error('Uncaught error:', e && e.stack ? e.stack : e));
+
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
