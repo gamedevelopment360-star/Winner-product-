@@ -97,15 +97,15 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 <section class="page on" id="dash">
  <h2>Dashboard</h2>
  <div class="grid">
-  <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
+  <div class="card stat" id="cardSaved" style="cursor:pointer"><b id="sSaved">–</b><span>Products saved ↓</span></div>
   <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
-  <div class="card stat"><b id="sVideos">–</b><span>Videos saved</span></div>
+  <div class="card stat" id="cardVids" style="cursor:pointer"><b id="sVideos">–</b><span>Trending videos saved ↓</span></div>
   <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
  </div>
  <h2 id="dTopH" hidden>Saved products</h2>
  <div class="row" id="dCopyRow" hidden><button class="btn" id="copyAll">Copy products link</button></div>
  <div id="dTop" class="msg">Loading…</div>
- <h2 id="dVidH" hidden>Saved videos</h2>
+ <h2 id="dVidH" hidden>Trending products saved (YouTube videos)</h2>
  <div id="dVid"></div>
 </section>
 
@@ -276,6 +276,10 @@ async function loadDash() {
     $('#dVidH').hidden = !v.length;
     videos($('#dVid'), v);
     if (!v.length) { $('#dVid').className = ''; $('#dVid').innerHTML = ''; }
+    // Also fill the YouTube screen with the saved list after a refresh, so it does not start blank.
+    // Tapping the Trending button still replaces it with fresh results.
+    const yo = $('#yOut');
+    if (v.length && !yo.innerHTML.trim()) videos(yo, v);
   }).catch((e) => { $('#sVideos').textContent = '0'; $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; });
 }
 
@@ -326,6 +330,9 @@ function videos(el, vids) {
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
     '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
+function jumpTo(sel) { const el = $(sel); if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+$('#cardSaved').onclick = () => jumpTo('#dTopH');
+$('#cardVids').onclick = () => jumpTo('#dVidH');
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
   try { const j = await api('/api/research/youtube-trending'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
