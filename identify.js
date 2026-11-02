@@ -20,6 +20,7 @@ function clean(v, max) {
 }
 
 function parseJson(text) {
+  text = String(text || '').replace(/<think>[\s\S]*?<\/think>/gi, ' ');
   const m = String(text || '').match(/\{[\s\S]*\}/);
   if (!m) return null;
   try { return JSON.parse(m[0]); } catch (e) { return null; }
@@ -55,6 +56,7 @@ async function visionCandidates(groqKey) {
     const score = (id) => {
       const x = id.toLowerCase();
       if (/whisper|guard|tts|orpheus|embed|prompt-guard|safeguard/.test(x)) return -1;
+      if (/qwen3\.[6-9]/.test(x)) return 6;
       if (/scout/.test(x)) return 5;
       if (/maverick/.test(x)) return 4;
       if (/vision|-vl|vl-/.test(x)) return 3;
@@ -112,7 +114,7 @@ module.exports = function registerIdentify(app) {
       if (!thumb) return res.status(404).json({ error: 'This video has no picture.' });
 
       // 2) ask the Groq vision model
-      const model = process.env.GROQ_VISION_MODEL || workingModel || 'meta-llama/llama-4-scout-17b-16e-instruct';
+      const model = process.env.GROQ_VISION_MODEL || workingModel || 'qwen/qwen3.8-27b';
       const prompt =
         'You help people find products to sell online. Look at the picture (a YouTube video thumbnail) and the video text below. ' +
         'Identify the ONE main physical product that is shown or promoted. ' +
@@ -130,10 +132,10 @@ module.exports = function registerIdentify(app) {
         'Description: ' + clean(sn.description, 800);
 
       let result = await groqChat(groqKey, model, prompt, thumb);
-      if (!result.ok && (result.status === 400 || result.status === 404) && !process.env.GROQ_VISION_MODEL) {
+      if (!result.ok && (result.status === 400 || result.status === 404)) {
         // the default model name may be old: ask Groq what is available and try those
         const tried = new Set([model]);
-        const cands = (await visionCandidates(groqKey)).filter((id) => !tried.has(id)).slice(0, 3);
+        const cands = (await visionCandidates(groqKey)).filter((id) => !tried.has(id)).slice(0, 4);
         for (const id of cands) {
           const r2 = await groqChat(groqKey, id, prompt, thumb);
           if (r2.ok) { result = r2; workingModel = id; break; }
