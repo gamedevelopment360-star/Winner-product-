@@ -1058,4 +1058,7 @@ module.exports = function (app) {
       res.json({ ok: false, error: e.message || 'Lookup failed' });
     }
   });
+
+  // Finds the product in a YouTube video from its picture and text (Groq vision).
+  require('./identify')(app);
 };
