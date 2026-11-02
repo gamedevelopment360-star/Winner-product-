@@ -499,18 +499,25 @@ function guessProduct(title, descRaw) {
 }
 
 module.exports = function (app) {
-  // Remember what each signed-in person fetched, so everyone only sees their own products.
+  // Remember what each signed-in person fetched (products and YouTube videos), so everyone keeps their own.
   app.use('/api/research', (req, res, next) => {
     const email = req.userEmail;
-    const fetchRoute = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
-    if (!email || req.method !== 'GET' || !fetchRoute) return next();
+    if (!email || req.method !== 'GET') return next();
+    const isVideos = req.path === '/youtube-trending';
+    const isProducts = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
+    if (!isVideos && !isProducts) return next();
     const send = res.json.bind(res);
     res.json = (body) => {
-      if (body && Array.isArray(body.results)) Promise.resolve(db.claimProducts ? db.claimProducts(email, body.results) : null).catch((e) => console.error('claim failed:', e.message || e));
+      if (isVideos && body && Array.isArray(body.videos)) {
+        Promise.resolve(db.saveVideos ? db.saveVideos(email, body.videos) : null).catch((e) => console.error('video save failed:', e.message || e));
+      } else if (isProducts && body && Array.isArray(body.results)) {
+        Promise.resolve(db.claimProducts ? db.claimProducts(email, body.results) : null).catch((e) => console.error('claim failed:', e.message || e));
+      }
       return send(body);
     };
     next();
   });
+
   app.get('/api/version', (req, res) => res.json({
     version: 'relevance-v9-users',
     databaseFile: (typeof db.cacheGet === 'function' && typeof db.claimProducts === 'function') ? 'up to date' : 'OLD: upload the new db.js to the main folder'
@@ -792,6 +799,9 @@ module.exports = function (app) {
       }
       if (lastErr && !found.length) {
         if (trendVideos.data) return res.json({ ...trendVideos.data, cached: true, stale: true });
+        // nothing shared saved either: show the videos saved on this person's account
+        const mine = (req.userEmail && db.listVideos) ? await db.listVideos(req.userEmail, 100).catch(() => []) : [];
+        if (mine.length) return res.json({ videos: mine, groups: [], cached: true, stale: true });
         return res.status(502).json({ error: lastErr });
       }
       const ids = Array.from(new Set(found.map((f) => f.id)));
@@ -856,6 +866,12 @@ module.exports = function (app) {
       console.error('trending videos failed:', e.message || e);
       res.status(502).json({ error: 'Could not reach YouTube.' });
     }
+  });
+
+  // The YouTube videos saved on your account, newest first.
+  app.get('/api/research/my-videos', async (req, res) => {
+    try { res.json({ videos: (req.userEmail && db.listVideos) ? await db.listVideos(req.userEmail, req.query.limit) : [] }); }
+    catch (e) { console.error('my videos failed:', e.message || e); res.json({ videos: [] }); }
   });
 
   // Video interest for one product from YouTube. /api/research/video?q=product name

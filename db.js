@@ -62,14 +62,6 @@ function init() {
           saved_at TIMESTAMPTZ DEFAULT now(),
           PRIMARY KEY (email, pid)
         )`)
-      ).then(() => p.query(`
-        CREATE TABLE IF NOT EXISTS user_searches (
-          id SERIAL PRIMARY KEY,
-          email TEXT NOT NULL,
-          query TEXT NOT NULL,
-          results INTEGER,
-          searched_at TIMESTAMPTZ DEFAULT now()
-        )`)
       ).then(() => true).catch((e) => {
         console.error('database setup failed:', e.message || e);
         ready = null;
@@ -237,28 +229,6 @@ async function listDemand(opts) {
   }));
 }
 
-async function saveSearch(query, results, email) {
-  if (!enabled() || !query) return;
-  if (!(await init())) return;
-  const q = String(query).slice(0, 80);
-  const n = results == null ? null : results;
-  // The person's own history comes first, so a problem with the old shared table can never block it.
-  if (email) await getPool().query('INSERT INTO user_searches (email, query, results) VALUES ($1, $2, $3)', [String(email).toLowerCase(), q, n]);
-  try { await getPool().query('INSERT INTO searches (query, results) VALUES ($1, $2)', [q, n]); }
-  catch (e) { console.error('shared search log failed:', e.message || e); }
-}
-
-async function listSearches(limit, email) {
-  if (!(await init())) throw new Error('Database is not set up.');
-  if (!email) return [];
-  const n = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-  const r = await getPool().query(
-    `SELECT LOWER(query) AS query, COUNT(*)::int AS times, MAX(searched_at) AS last_time
-       FROM user_searches WHERE email = $2 GROUP BY LOWER(query) ORDER BY MAX(searched_at) DESC LIMIT $1`,
-    [n, String(email).toLowerCase()]);
-  return r.rows;
-}
-
 async function count(email) {
   if (!(await init()) || !email) return 0;
   const r = await getPool().query('SELECT COUNT(*)::int AS n FROM user_products WHERE email = $1', [String(email).toLowerCase()]);
@@ -277,10 +247,67 @@ async function claimProducts(email, list) {
   return pids.length;
 }
 
+// Small key/value store, used to keep the YouTube video list between restarts.
+let cacheReady = null;
+async function cacheTable() {
+  if (!cacheReady) cacheReady = getPool().query('CREATE TABLE IF NOT EXISTS kv_cache (key TEXT PRIMARY KEY, value JSONB, updated TIMESTAMPTZ DEFAULT now())').catch((e) => { cacheReady = null; throw e; });
+  return cacheReady;
+}
+async function cacheGet(key) {
+  if (!enabled() || !(await init())) return null;
+  await cacheTable();
+  const r = await getPool().query('SELECT value FROM kv_cache WHERE key = $1', [key]);
+  return r.rows[0] ? r.rows[0].value : null;
+}
+async function cacheSet(key, value) {
+  if (!enabled() || !(await init())) return false;
+  await cacheTable();
+  await getPool().query(
+    'INSERT INTO kv_cache (key, value) VALUES ($1, $2::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated = now()',
+    [key, JSON.stringify(value)]);
+  return true;
+}
+
+// YouTube videos each signed-in person has seen, kept on their account.
+let videoTableReady = null;
+async function videoTable() {
+  if (!videoTableReady) {
+    videoTableReady = getPool().query(`CREATE TABLE IF NOT EXISTS user_videos (
+      email TEXT NOT NULL,
+      vid TEXT NOT NULL,
+      data JSONB NOT NULL,
+      saved_at TIMESTAMPTZ DEFAULT now(),
+      PRIMARY KEY (email, vid)
+    )`).catch((e) => { videoTableReady = null; throw e; });
+  }
+  return videoTableReady;
+}
+async function saveVideos(email, videos) {
+  if (!enabled() || !email || !videos || !videos.length) return 0;
+  if (!(await init())) return 0;
+  await videoTable();
+  const seen = new Set(), list = [];
+  videos.forEach((v) => { if (v && v.id && !seen.has(v.id)) { seen.add(v.id); list.push(v); } });
+  if (!list.length) return 0;
+  await getPool().query(
+    `INSERT INTO user_videos (email, vid, data)
+     SELECT $1, x.value->>'id', x.value FROM jsonb_array_elements($2::jsonb) AS x
+     ON CONFLICT (email, vid) DO UPDATE SET data = EXCLUDED.data, saved_at = now()`,
+    [String(email).toLowerCase(), JSON.stringify(list)]);
+  return list.length;
+}
+async function listVideos(email, limit) {
+  if (!enabled() || !email || !(await init())) return [];
+  await videoTable();
+  const n = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
+  const r = await getPool().query('SELECT data FROM user_videos WHERE email = $1 ORDER BY saved_at DESC LIMIT $2', [String(email).toLowerCase(), n]);
+  return r.rows.map((x) => x.data);
+}
+
 // Erase all saved products, history and searches (the users table is kept).
 async function wipeAll() {
   if (!enabled() || !(await init())) return false;
-  await getPool().query('TRUNCATE products, snapshots, searches, user_products, user_searches');
+  await getPool().query('TRUNCATE products, snapshots, searches, user_products');
   return true;
 }
 
@@ -313,4 +340,4 @@ async function saveUser(u) {
   }
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, saveSearch, listSearches, count, saveUser, claimProducts, wipeAll };
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos };
