@@ -482,7 +482,7 @@ function summarizeVideos(items, query) {
 // 1) hashtags that name a thing (not #viral, #shorts, #amazonfinds ...), 2) else the title with filler words removed.
 const GENERIC_TAG = /amazon|tiktok|viral|short|fyp|foryou|trend|product|gadget|find|haul|review|unbox|shop|deal|must|youtube|reel|vlog|asmr|ranking|best|top|hack|cool|wow|new|life|parent|mom|dad|lover|subscribe|follow|like|share|fun|funny|satisfying|diy|tips?|ideas?|2025|2026|usa|us|uk|link|bio|ad|sponsored|gift|christmas|summer|winter/i;
 const GENERIC_WORD = /^(dogs?|cats?|pets?|kitchen|home|car|beauty|fitness|health|baby|kids?|tech|travel|outdoor)$/i;
-const TITLE_FILLER = /\b(can'?t|cannot|believe|how|well|this|that|these|those|works?|you|your|need(ed)?|didn'?t|don'?t|know|until|now|make|made|me|buy|bought|it|tiktok|amazon|finds?|musts?|haves?|viral|products?|gadgets?|home|wonder|lived|without|them|the|a|an|is|are|was|of|for|to|and|or|with|in|on|at|my|i|we|worth|hype|review(ed)?|best|new|cool|stuff|why|still|like|smells?|going|goes|went|blew|up|got|get|just|so|really|very|top|\d+)\b/gi;
+const TITLE_FILLER = /\b(can'?t|cannot|believe|how|well|this|that|these|those|works?|you|your|need(ed)?|didn'?t|don'?t|know|until|now|make|made|me|buy|bought|it|tiktok|amazon|finds?|musts?|haves?|viral|products?|gadgets?|home|wonder|lived|without|them|the|a|an|is|are|was|of|for|to|and|or|with|in|on|at|my|i|we|worth|hype|review(ed)?|best|new|cool|stuff|why|still|like|smells?|things?|stuff|items?|ideas?|under|going|goes|went|blew|up|got|get|just|so|really|very|top|\d+)\b/gi;
 function splitTag(t) { return t.replace(/([a-z])([A-Z])/g, '$1 $2'); }
 function guessProduct(title, descRaw) {
   const text = String(title || '') + ' ' + String(descRaw || '').slice(0, 250);
@@ -810,7 +810,7 @@ module.exports = function (app) {
       const used = new Set();
       const groups = [];
       for (const c of CATS) {
-        let list = found.filter((f) => f.cat === c.name).map((f) => byId[f.id]).filter((v) => v && !used.has(v.id) && mostlyLatin(v.title) && isProductVideo(v));
+        let list = found.filter((f) => f.cat === c.name).map((f) => byId[f.id]).filter((v) => v && !used.has(v.id) && mostlyLatin(v.title) && isProductVideo(v) && v.product);
         const single = list.filter((v) => !LISTY.test(v.title));
         if (single.length >= 3) list = single;
         const perChannel = {};
