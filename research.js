@@ -478,20 +478,28 @@ function summarizeVideos(items, query) {
 }
 
 // ---------- routes ----------
-module.exports = function (app) {
-  // Remember what each signed-in person fetched, so everyone only sees their own products.
-  app.use('/api/research', (req, res, next) => {
-    const email = req.userEmail;
-    const fetchRoute = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
-    if (!email || req.method !== 'GET' || !fetchRoute) return next();
-    const send = res.json.bind(res);
-    res.json = (body) => {
-      if (body && Array.isArray(body.results)) db.claimProducts(email, body.results).catch((e) => console.error('claim failed:', e.message || e));
-      return send(body);
-    };
-    next();
+// Guess the product name from a video's title and description.
+// 1) hashtags that name a thing (not #viral, #shorts, #amazonfinds ...), 2) else the title with filler words removed.
+const GENERIC_TAG = /amazon|tiktok|viral|short|fyp|foryou|trend|product|gadget|find|haul|review|unbox|shop|deal|must|youtube|reel|vlog|asmr|ranking|best|top|hack|cool|wow|new|life|parent|mom|dad|lover|subscribe|follow|like|share|fun|funny|satisfying|diy|tips?|ideas?|2025|2026|usa|us|uk|link|bio|ad|sponsored|gift|christmas|summer|winter/i;
+const GENERIC_WORD = /^(dogs?|cats?|pets?|kitchen|home|car|beauty|fitness|health|baby|kids?|tech|travel|outdoor)$/i;
+const TITLE_FILLER = /\b(can'?t|cannot|believe|how|well|this|that|these|those|works?|you|your|need(ed)?|didn'?t|don'?t|know|until|now|make|made|me|buy|bought|it|tiktok|amazon|finds?|musts?|haves?|viral|products?|gadgets?|home|wonder|lived|without|them|the|a|an|is|are|was|of|for|to|and|or|with|in|on|at|my|i|we|worth|hype|review(ed)?|best|new|cool|stuff|why|still|like|smells?|going|goes|went|blew|up|got|get|just|so|really|very|top|\d+)\b/gi;
+function splitTag(t) { return t.replace(/([a-z])([A-Z])/g, '$1 $2'); }
+function guessProduct(title, descRaw) {
+  const text = String(title || '') + ' ' + String(descRaw || '').slice(0, 250);
+  const tags = [];
+  (text.match(/#[A-Za-z][A-Za-z0-9]{2,}/g) || []).forEach((h) => {
+    const w = h.slice(1);
+    if (!GENERIC_TAG.test(w) && !GENERIC_WORD.test(w) && !tags.some((x) => x.toLowerCase() === splitTag(w).toLowerCase())) tags.push(splitTag(w));
   });
-  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v9-users' }));
+  if (tags.length) return tags.slice(0, 3).join(', ');
+  const cleaned = String(title || '').replace(/#\S+/g, ' ').replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[^A-Za-z0-9' -]/g, ' ').replace(TITLE_FILLER, ' ').replace(/\s+/g, ' ').trim();
+  const words = cleaned.split(' ').filter((w) => w.length > 1);
+  return words.length >= 1 && words.length <= 5 ? words.join(' ') : '';
+}
+
+module.exports = function (app) {
+  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
   app.get('/api/research', requireCjKey, async (req, res) => {
@@ -520,7 +528,7 @@ module.exports = function (app) {
     }
 
     db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
-    db.saveSearch(q, list.length, req.userEmail).catch((e) => console.error('search save failed:', e.message || e));
+    db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
     res.json({ results: list.map(publicFields), cjFailed: cjResult.status === 'rejected', aliFailed: aliResult.status === 'rejected' });
   });
 
@@ -718,7 +726,7 @@ module.exports = function (app) {
   app.get('/api/research/rising', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so rising products cannot be tracked.' });
     try {
-      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
+      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
       res.json({ results, message: results.length ? '' : 'No rising products yet. The site saves each product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
     } catch (e) {
       console.error('rising failed:', e.message || e);
@@ -776,9 +784,11 @@ module.exports = function (app) {
       const now = Date.now();
       const byId = {};
       const descById = {};
+      const descRaw = {};
       items.forEach((v) => {
         const sn = v.snippet || {};
         descById[v.id] = String(sn.description || '').slice(0, 250).toLowerCase();
+        descRaw[v.id] = String(sn.description || '').slice(0, 250);
         const views = Number((v.statistics || {}).viewCount) || 0;
         const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
         const th = sn.thumbnails || {};
@@ -786,7 +796,8 @@ module.exports = function (app) {
           id: v.id, title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
           views, viewsPerDay: Math.round(views / ageDays),
           thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
-          url: 'https://www.youtube.com/watch?v=' + v.id
+          url: 'https://www.youtube.com/watch?v=' + v.id,
+          product: guessProduct(sn.title, descRaw[v.id])
         };
       });
       // leave out lists, compilations and hauls (many products in one video); keep them only if too few remain
@@ -857,7 +868,7 @@ module.exports = function (app) {
   app.get('/api/research/demand', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so demand growth cannot be tracked.' });
     try {
-      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({
+      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST })).map((p) => ({
         ...p, demand: demandDetail(p), competition: null, listedBySellers: '?', scoreParts: null, dataFlags: []
       }));
       res.json({ results, message: results.length ? '' : 'No demand growth yet. The site saves each AliExpress product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
@@ -871,8 +882,8 @@ module.exports = function (app) {
   app.get('/api/saved', async (req, res) => {
     if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on the server.' });
     try {
-      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST, email: req.userEmail });
-      res.json({ total: await db.count(req.userEmail), results });
+      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST });
+      res.json({ total: await db.count(), results });
     } catch (e) {
       console.error('saved list failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read saved products' });
@@ -908,20 +919,10 @@ module.exports = function (app) {
     }
   });
 
-  // Open /api/history-test: saves one test search for you and shows the exact error if it fails.
-  app.get('/api/history-test', async (req, res) => {
-    const out = { signedInAs: req.userEmail || null, databaseOn: db.enabled(), version: 'relevance-v9-users' };
-    try { await db.saveSearch('history-test', 0, req.userEmail); out.testSaved = true; }
-    catch (e) { out.testSaved = false; out.saveError = String(e.message || e).slice(0, 200); }
-    try { out.myHistory = (await db.listSearches(5, req.userEmail)).map((r) => r.query); }
-    catch (e) { out.listError = String(e.message || e).slice(0, 200); }
-    res.json(out);
-  });
-
   app.get('/api/searches', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [] });
     try {
-      res.json({ results: await db.listSearches(req.query.limit, req.userEmail) });
+      res.json({ results: await db.listSearches(req.query.limit) });
     } catch (e) {
       console.error('searches list failed:', e.message || e);
       res.json({ results: [] });
