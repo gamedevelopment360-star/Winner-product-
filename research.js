@@ -506,12 +506,15 @@ module.exports = function (app) {
     if (!email || req.method !== 'GET' || !fetchRoute) return next();
     const send = res.json.bind(res);
     res.json = (body) => {
-      if (body && Array.isArray(body.results)) db.claimProducts(email, body.results).catch((e) => console.error('claim failed:', e.message || e));
+      if (body && Array.isArray(body.results)) Promise.resolve(db.claimProducts ? db.claimProducts(email, body.results) : null).catch((e) => console.error('claim failed:', e.message || e));
       return send(body);
     };
     next();
   });
-  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v9-users' }));
+  app.get('/api/version', (req, res) => res.json({
+    version: 'relevance-v9-users',
+    databaseFile: (typeof db.cacheGet === 'function' && typeof db.claimProducts === 'function') ? 'up to date' : 'OLD: upload the new db.js to the main folder'
+  }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
   app.get('/api/research', requireCjKey, async (req, res) => {
@@ -754,7 +757,7 @@ module.exports = function (app) {
     if (!key) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set on the server.' });
     // The list is also kept in the database, so redeploys and sleeping do not waste YouTube's daily limit.
     if (!trendVideos.data) {
-      const saved = await db.cacheGet('yt-trending').catch(() => null);
+      const saved = await Promise.resolve(db.cacheGet ? db.cacheGet('yt-trending') : null).catch(() => null);
       if (saved && saved.data) { trendVideos.data = saved.data; trendVideos.at = saved.at || 0; }
     }
     if (trendVideos.data && Date.now() - trendVideos.at < 6 * 3600 * 1000) return res.json({ ...trendVideos.data, cached: true });
@@ -846,7 +849,7 @@ module.exports = function (app) {
       const data = { videos, groups };
       if (!lastErr) { // only keep a complete list
         trendVideos.at = Date.now(); trendVideos.data = data;
-        db.cacheSet('yt-trending', { at: trendVideos.at, data }).catch((e) => console.error('could not keep video list:', e.message || e));
+        Promise.resolve(db.cacheSet ? db.cacheSet('yt-trending', { at: trendVideos.at, data }) : null).catch((e) => console.error('could not keep video list:', e.message || e));
       }
       res.json(data);
     } catch (e) {
