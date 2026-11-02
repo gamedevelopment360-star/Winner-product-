@@ -99,12 +99,14 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <div class="grid">
   <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
   <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
-  <div class="card stat"><b id="sVideos">–</b><span>Trending videos</span></div>
+  <div class="card stat"><b id="sVideos">–</b><span>Videos saved</span></div>
   <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
  </div>
  <h2 id="dTopH" hidden>Saved products</h2>
  <div class="row" id="dCopyRow" hidden><button class="btn" id="copyAll">Copy products link</button></div>
  <div id="dTop" class="msg">Loading…</div>
+ <h2 id="dVidH" hidden>Saved videos</h2>
+ <div id="dVid"></div>
 </section>
 
 <section class="page" id="win">
@@ -268,7 +270,13 @@ async function loadDash() {
     .catch((e) => { $('#dTop').textContent = e.message; });
   api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
   allHist().then((h) => $('#sSearch').textContent = num(h.length));
-  $('#sVideos').textContent = num(videoCount());
+  api('/api/research/my-videos?limit=500').then((j) => {
+    const v = j.videos || [];
+    $('#sVideos').textContent = num(v.length);
+    $('#dVidH').hidden = !v.length;
+    videos($('#dVid'), v);
+    if (!v.length) { $('#dVid').className = ''; $('#dVid').innerHTML = ''; }
+  }).catch((e) => { $('#sVideos').textContent = '0'; $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; });
 }
 
 // If some products are ticked, copy only those. If none are ticked, copy the whole list.
