@@ -36,6 +36,10 @@ input{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line
 #pickbar span{font-weight:600}
 .meta{color:var(--mute);font-size:13px;margin-top:3px}
 .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:#232834;margin-right:6px;color:var(--text)}
+.pot-high{background:#2ecc71;color:#000}.pot-mid{background:#f1c40f;color:#000}.pot-low{background:#555;color:#eee}
+.matchQ{min-width:0;width:58%;flex:none;padding:8px 10px;font-size:14px}
+.matchBtn{padding:8px 12px;font-size:13px}
+.matchOut .m{margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:13px}
 .score{color:var(--accent);font-weight:700}
 .msg{color:var(--mute);padding:10px 0}
 .err{color:var(--bad)}
@@ -323,14 +327,71 @@ $('#go').onclick = doSearch;
 $('#q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
 
 // youtube
+function potentialBadge(v) {
+  if (!v.potential) return '';
+  const cls = v.potential === 'High potential' ? 'pot-high' : v.potential === 'Medium potential' ? 'pot-mid' : 'pot-low';
+  return '<span class="badge ' + cls + '">' + esc(v.potential) + (typeof v.potentialScore === 'number' ? ' ' + v.potentialScore + '/100' : '') + '</span>';
+}
+function engagementLine(v) {
+  if (v.likes == null && v.comments == null && !v.potential) return '';
+  return '<div class="meta">👍 ' + (v.likes == null ? 'hidden' : num(v.likes)) + ' · 💬 ' + (v.comments == null ? 'off' : num(v.comments)) +
+    (v.engagementPct != null ? ' · engagement ' + v.engagementPct + '%' : '') + '</div><div class="meta">' + potentialBadge(v) + '</div>';
+}
+function matcherHtml(v) {
+  const first = String(v.product || '').split(',')[0].trim();
+  return '<div class="meta"><input class="matchQ" value="' + esc(first) + '" placeholder="product name"> <button class="btn identBtn" data-vid="' + esc(v.id || '') + '">Identify product</button> <button class="btn matchBtn">Find supplier</button></div><div class="identOut"></div><div class="matchOut"></div>';
+}
+function matchRow(p) {
+  const cost = Number(p.cost), sell = Number(p.suggestedPrice);
+  const margin = cost > 0 && sell > 0 ? ' · margin ~$' + (sell - cost).toFixed(2) : '';
+  return '<div class="m"><a href="' + esc(productUrl(p)) + '" target="_blank" rel="noopener">' + esc(p.name || 'Product') + '</a><br>' +
+    '<span class="badge">' + (p.source === 'aliexpress' ? 'AliExpress' : 'CJ') + '</span>' +
+    'Cost $' + (cost || 0).toFixed(2) + ' · Sell ~$' + (sell || 0).toFixed(2) + margin + ' · Score ' + esc(p.score) + '</div>';
+}
 function linkName(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'link'; } }
 function videos(el, vids) {
   el.className = vids && vids.length ? '' : 'msg';
   el.innerHTML = vids && vids.length ? vids.map((v) =>
     '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
-    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + (v.links && v.links.length ? '<div class="meta"><b>Product links:</b> ' + v.links.map((u) => '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(linkName(u)) + '</a>').join(' · ') + '</div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
+    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + (v.links && v.links.length ? '<div class="meta"><b>Product links:</b> ' + v.links.map((u) => '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(linkName(u)) + '</a>').join(' · ') + '</div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div>' + engagementLine(v) + matcherHtml(v) + '</div></div>').join('') : 'No videos found.';
 }
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest ? e.target.closest('.matchBtn') : null;
+  if (!btn) return;
+  const card = btn.closest('.item');
+  const q = card.querySelector('.matchQ').value.trim();
+  const out = card.querySelector('.matchOut');
+  if (!q) { out.innerHTML = '<div class="meta">Type the product name first.</div>'; return; }
+  out.innerHTML = '<div class="meta">Searching CJ and AliExpress…</div>';
+  try {
+    const j = await api('/api/research?q=' + encodeURIComponent(q));
+    const top = (j.results || []).slice(0, 3);
+    out.innerHTML = top.length ? top.map(matchRow).join('') : '<div class="meta">No supplier match found. Try different words.</div>';
+  } catch (err) { out.innerHTML = '<div class="meta">' + esc(err.message) + '</div>'; }
+});
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest ? e.target.closest('.identBtn') : null;
+  if (!btn) return;
+  const card = btn.closest('.item');
+  const out = card.querySelector('.identOut');
+  const vid = btn.getAttribute('data-vid');
+  if (!vid) { out.innerHTML = '<div class="meta">This video has no id.</div>'; return; }
+  out.innerHTML = '<div class="meta">Looking at the video picture…</div>';
+  btn.disabled = true;
+  try {
+    const j = await api('/api/research/identify?id=' + encodeURIComponent(vid));
+    if (!j.product) {
+      out.innerHTML = '<div class="meta">No product found. ' + esc(j.reason || '') + '</div>';
+    } else {
+      card.querySelector('.matchQ').value = j.product;
+      out.innerHTML = '<div class="meta"><b>Product:</b> ' + esc(j.product) + (j.brand ? ' · <b>Brand:</b> ' + esc(j.brand) : '') +
+        ' · <b>Category:</b> ' + esc(j.category) + ' · confidence ' + esc(j.confidence) + '</div>' +
+        '<div class="meta">' + esc(j.reason || '') + '</div>';
+    }
+  } catch (err) { out.innerHTML = '<div class="meta">' + esc(err.message) + '</div>'; }
+  btn.disabled = false;
+});
 function jumpTo(sel) { const el = $(sel); if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 $('#cardSaved').onclick = () => jumpTo('#dTopH');
 $('#cardVids').onclick = () => jumpTo('#dVidH');
