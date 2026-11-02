@@ -499,7 +499,19 @@ function guessProduct(title, descRaw) {
 }
 
 module.exports = function (app) {
-  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v8' }));
+  // Remember what each signed-in person fetched, so everyone only sees their own products.
+  app.use('/api/research', (req, res, next) => {
+    const email = req.userEmail;
+    const fetchRoute = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
+    if (!email || req.method !== 'GET' || !fetchRoute) return next();
+    const send = res.json.bind(res);
+    res.json = (body) => {
+      if (body && Array.isArray(body.results)) db.claimProducts(email, body.results).catch((e) => console.error('claim failed:', e.message || e));
+      return send(body);
+    };
+    next();
+  });
+  app.get('/api/version', (req, res) => res.json({ version: 'relevance-v9-users' }));
   const winnersCache = new Map(); // cj key -> { at, results }
 
   app.get('/api/research', requireCjKey, async (req, res) => {
@@ -528,7 +540,6 @@ module.exports = function (app) {
     }
 
     db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
-    db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
     res.json({ results: list.map(publicFields), cjFailed: cjResult.status === 'rejected', aliFailed: aliResult.status === 'rejected' });
   });
 
@@ -726,7 +737,7 @@ module.exports = function (app) {
   app.get('/api/research/rising', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so rising products cannot be tracked.' });
     try {
-      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
+      const results = (await db.listRising({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({ ...publicFields(p), growth: p.growth, growthDays: p.growthDays }));
       res.json({ results, message: results.length ? '' : 'No rising products yet. The site saves each product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
     } catch (e) {
       console.error('rising failed:', e.message || e);
@@ -741,6 +752,11 @@ module.exports = function (app) {
   app.get('/api/research/youtube-trending', async (req, res) => {
     const key = process.env.YOUTUBE_API_KEY;
     if (!key) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set on the server.' });
+    // The list is also kept in the database, so redeploys and sleeping do not waste YouTube's daily limit.
+    if (!trendVideos.data) {
+      const saved = await db.cacheGet('yt-trending').catch(() => null);
+      if (saved && saved.data) { trendVideos.data = saved.data; trendVideos.at = saved.at || 0; }
+    }
     if (trendVideos.data && Date.now() - trendVideos.at < 6 * 3600 * 1000) return res.json({ ...trendVideos.data, cached: true });
     try {
       const H = { 'x-goog-api-key': key };
@@ -766,12 +782,15 @@ module.exports = function (app) {
         const sj = await (await fetch(sUrl, { headers: H })).json();
         if (sj.error) {
           const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
-          lastErr = why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
+          lastErr = (why === 'quotaExceeded' || /quota/i.test(sj.error.message || '')) ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
           break;
         }
         (sj.items || []).forEach((i) => { if (i.id && i.id.videoId) found.push({ cat: c.name, id: i.id.videoId }); });
       }
-      if (lastErr && !found.length) return res.status(502).json({ error: lastErr });
+      if (lastErr && !found.length) {
+        if (trendVideos.data) return res.json({ ...trendVideos.data, cached: true, stale: true });
+        return res.status(502).json({ error: lastErr });
+      }
       const ids = Array.from(new Set(found.map((f) => f.id)));
       if (!ids.length) return res.json({ videos: [], groups: [] });
       const items = [];
@@ -825,7 +844,10 @@ module.exports = function (app) {
       const videos = [];
       groups.forEach((g) => g.videos.forEach((v) => videos.push({ ...v, channel: g.name + ' · ' + v.channel })));
       const data = { videos, groups };
-      trendVideos.at = Date.now(); trendVideos.data = data;
+      if (!lastErr) { // only keep a complete list
+        trendVideos.at = Date.now(); trendVideos.data = data;
+        db.cacheSet('yt-trending', { at: trendVideos.at, data }).catch((e) => console.error('could not keep video list:', e.message || e));
+      }
       res.json(data);
     } catch (e) {
       console.error('trending videos failed:', e.message || e);
@@ -847,7 +869,7 @@ module.exports = function (app) {
       const sj = await (await fetch(sUrl, { headers: H })).json();
       if (sj.error) {
         const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
-        const msg = why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
+        const msg = (why === 'quotaExceeded' || /quota/i.test(sj.error.message || '')) ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
         return res.status(502).json({ error: msg });
       }
       const ids = (sj.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
@@ -868,7 +890,7 @@ module.exports = function (app) {
   app.get('/api/research/demand', async (req, res) => {
     if (!db.enabled()) return res.json({ results: [], message: 'The database is not connected, so demand growth cannot be tracked.' });
     try {
-      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST })).map((p) => ({
+      const results = (await db.listDemand({ limit: 30, maxCost: MAX_COST, email: req.userEmail })).map((p) => ({
         ...p, demand: demandDetail(p), competition: null, listedBySellers: '?', scoreParts: null, dataFlags: []
       }));
       res.json({ results, message: results.length ? '' : 'No demand growth yet. The site saves each AliExpress product once a day when it shows up in a search or scan. Run scans on 2 or more different days, then check again.' });
@@ -882,52 +904,16 @@ module.exports = function (app) {
   app.get('/api/saved', async (req, res) => {
     if (!db.enabled()) return res.status(503).json({ error: 'DATABASE_URL is not set on the server.' });
     try {
-      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST });
-      res.json({ total: await db.count(), results });
+      const results = await db.listProducts({ q: String(req.query.q || '').trim(), sort: req.query.sort, limit: req.query.limit, maxCost: MAX_COST, email: req.userEmail });
+      res.json({ total: await db.count(req.userEmail), results });
     } catch (e) {
       console.error('saved list failed:', e.message || e);
       res.status(502).json({ error: e.message || 'Could not read saved products' });
     }
   });
 
-  // Words that were searched, newest first. ?limit=20
-  // Open /api/db-check to see if the database is connected (shows the real reason if it is not).
-  app.get('/api/db-check', async (req, res) => {
-    const url = process.env.DATABASE_URL;
-    if (!url) return res.json({ ok: false, problem: 'DATABASE_URL is not set in Render, so nothing can be saved.' });
-    let c;
-    try {
-      const { Client } = require('pg');
-      const local = /localhost|127\.0\.0\.1/.test(url);
-      c = new Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: false }, connectionTimeoutMillis: 10000 });
-      await c.connect();
-      await c.query('SELECT 1');
-      const t = await c.query("SELECT COUNT(*)::int AS n FROM information_schema.tables WHERE table_name = 'searches'");
-      const has = t.rows[0].n > 0;
-      const saved = has ? (await c.query('SELECT COUNT(*)::int AS n FROM searches')).rows[0].n : 0;
-      // run the same query the History tab uses, and show the newest rows
-      let listOk = true, listError = null, newest = [];
-      try {
-        const r = await c.query('SELECT LOWER(query) AS query, COUNT(*)::int AS times, MAX(searched_at) AS last_time FROM searches GROUP BY LOWER(query) ORDER BY MAX(searched_at) DESC LIMIT 5');
-        newest = r.rows.map((x) => x.query + ' (' + x.times + 'x)');
-      } catch (e2) { listOk = false; listError = String(e2.message || e2).slice(0, 160); }
-      res.json({ ok: true, connected: true, searchesTableExists: has, savedHistoryRows: saved, historyQueryWorks: listOk, historyQueryError: listError, newest, appThinksDbIsOn: db.enabled() });
-    } catch (e) {
-      res.json({ ok: false, connected: false, code: e.code || null, problem: String(e.message || e).split(url).join('[database url]').slice(0, 200) });
-    } finally {
-      if (c) c.end().catch(() => {});
-    }
-  });
-
-  app.get('/api/searches', async (req, res) => {
-    if (!db.enabled()) return res.json({ results: [] });
-    try {
-      res.json({ results: await db.listSearches(req.query.limit) });
-    } catch (e) {
-      console.error('searches list failed:', e.message || e);
-      res.json({ results: [] });
-    }
-  });
+  // Your dashboard still asks for this address. Searches are no longer saved on the server, so it answers with an empty list.
+  app.get('/api/searches', (req, res) => res.json({ results: [] }));
 
   app.get('/api/research/profit', requireCjKey, async (req, res) => {
     const pid = String(req.query.pid || '');
