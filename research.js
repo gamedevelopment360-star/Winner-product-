@@ -498,6 +498,25 @@ function guessProduct(title, descRaw) {
   return words.length >= 1 && words.length <= 5 ? words.join(' ') : '';
 }
 
+// Pull product/shop links out of a video description. Social, chat and YouTube links are
+// left out. Short links (amzn.to, bit.ly) are kept as they are; they open the product page
+// when tapped. Many videos only say "link in bio" and have nothing to find.
+const SKIP_LINK_HOST = /(^|\.)(youtube\.com|youtu\.be|instagram\.com|tiktok\.com|facebook\.com|fb\.com|fb\.me|twitter\.com|x\.com|pinterest\.com|snapchat\.com|threads\.net|discord\.gg|discord\.com|whatsapp\.com|wa\.me|t\.me|spotify\.com|patreon\.com|paypal\.me|google\.com|goo\.gl)$/i;
+function extractShopLinks(text) {
+  const found = String(text || '').match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
+  const out = [];
+  const seen = new Set();
+  found.forEach((raw) => {
+    const url = raw.replace(/[.,;!?]+$/, '');
+    let host = '';
+    try { host = new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return; }
+    if (!host || SKIP_LINK_HOST.test(host) || seen.has(url)) return;
+    seen.add(url);
+    out.push(url);
+  });
+  return out.slice(0, 5);
+}
+
 module.exports = function (app) {
   // Remember what each signed-in person fetched (products and YouTube videos), so everyone keeps their own.
   app.use('/api/research', (req, res, next) => {
@@ -765,7 +784,8 @@ module.exports = function (app) {
     // The list is also kept in the database, so redeploys and sleeping do not waste YouTube's daily limit.
     if (!trendVideos.data) {
       const saved = await Promise.resolve(db.cacheGet ? db.cacheGet('yt-trending') : null).catch(() => null);
-      if (saved && saved.data) { trendVideos.data = saved.data; trendVideos.at = saved.at || 0; }
+      const hasLinksField = saved && saved.data && Array.isArray(saved.data.videos) && saved.data.videos.some((v) => v && Array.isArray(v.links));
+      if (saved && saved.data && hasLinksField) { trendVideos.data = saved.data; trendVideos.at = saved.at || 0; }
     }
     if (trendVideos.data && Date.now() - trendVideos.at < 6 * 3600 * 1000) return res.json({ ...trendVideos.data, cached: true });
     try {
@@ -829,7 +849,8 @@ module.exports = function (app) {
           views, viewsPerDay: Math.round(views / ageDays),
           thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
           url: 'https://www.youtube.com/watch?v=' + v.id,
-          product: guessProduct(sn.title, descRaw[v.id])
+          product: guessProduct(sn.title, descRaw[v.id]),
+          links: extractShopLinks(sn.description)
         };
       });
       // leave out lists, compilations and hauls (many products in one video); keep them only if too few remain
