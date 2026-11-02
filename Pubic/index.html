@@ -316,7 +316,7 @@ function videos(el, vids) {
   el.innerHTML = vids && vids.length ? vids.map((v) =>
     '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
-    '<div class="meta">' + esc(v.channel) + '</div><div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
+    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
