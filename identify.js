@@ -25,6 +25,46 @@ function parseJson(text) {
   try { return JSON.parse(m[0]); } catch (e) { return null; }
 }
 
+
+let workingModel = null; // a model that worked once, so later checks go straight to it
+
+async function groqChat(groqKey, model, prompt, thumb) {
+  const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + groqKey },
+    body: JSON.stringify({
+      model,
+      temperature: 0,
+      max_tokens: 300,
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: thumb } },
+      ] }],
+    }),
+  });
+  const gj = await gr.json().catch(() => ({}));
+  return { ok: gr.ok, status: gr.status, json: gj };
+}
+
+// Asks Groq which models exist and returns the ones that look like picture-reading models.
+async function visionCandidates(groqKey) {
+  try {
+    const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: 'Bearer ' + groqKey } });
+    const j = await r.json().catch(() => ({}));
+    const ids = ((j && j.data) || []).filter((m) => m && m.id && m.active !== false).map((m) => String(m.id));
+    const score = (id) => {
+      const x = id.toLowerCase();
+      if (/whisper|guard|tts|orpheus|embed|prompt-guard|safeguard/.test(x)) return -1;
+      if (/scout/.test(x)) return 5;
+      if (/maverick/.test(x)) return 4;
+      if (/vision|-vl|vl-/.test(x)) return 3;
+      if (/llama-4/.test(x)) return 2;
+      return 0;
+    };
+    return ids.filter((id) => score(id) > 0).sort((a, b) => score(b) - score(a));
+  } catch (e) { return []; }
+}
+
 module.exports = function registerIdentify(app) {
   app.get('/api/research/identify', async (req, res) => {
     try {
@@ -72,7 +112,7 @@ module.exports = function registerIdentify(app) {
       if (!thumb) return res.status(404).json({ error: 'This video has no picture.' });
 
       // 2) ask the Groq vision model
-      const model = process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+      const model = process.env.GROQ_VISION_MODEL || workingModel || 'meta-llama/llama-4-scout-17b-16e-instruct';
       const prompt =
         'You help people find products to sell online. Look at the picture (a YouTube video thumbnail) and the video text below. ' +
         'Identify the ONE main physical product that is shown or promoted. ' +
@@ -89,26 +129,26 @@ module.exports = function registerIdentify(app) {
         'Tags: ' + clean((sn.tags || []).slice(0, 20).join(', '), 300) + '\n' +
         'Description: ' + clean(sn.description, 800);
 
-      const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + groqKey },
-        body: JSON.stringify({
-          model,
-          temperature: 0,
-          max_tokens: 300,
-          messages: [{ role: 'user', content: [
-            { type: 'text', text: prompt },
-            { type: 'image_url', image_url: { url: thumb } },
-          ] }],
-        }),
-      });
-      const gj = await gr.json().catch(() => ({}));
+      let result = await groqChat(groqKey, model, prompt, thumb);
+      if (!result.ok && (result.status === 400 || result.status === 404) && !process.env.GROQ_VISION_MODEL) {
+        // the default model name may be old: ask Groq what is available and try those
+        const tried = new Set([model]);
+        const cands = (await visionCandidates(groqKey)).filter((id) => !tried.has(id)).slice(0, 3);
+        for (const id of cands) {
+          const r2 = await groqChat(groqKey, id, prompt, thumb);
+          if (r2.ok) { result = r2; workingModel = id; break; }
+        }
+      } else if (result.ok) {
+        workingModel = model;
+      }
+      const gr = { ok: result.ok, status: result.status };
+      const gj = result.json;
       if (!gr.ok) {
-        console.error('Groq identify failed:', gr.status, clean(gj && gj.error && gj.error.message, 200));
+        const why = clean(gj && gj.error && gj.error.message, 160);
+        console.error('Groq identify failed:', gr.status, why);
         if (gr.status === 401 || gr.status === 403) return res.status(502).json({ error: 'Groq did not accept the key. Check GROQ_API_KEY in Render.' });
         if (gr.status === 429) return res.status(429).json({ error: 'Groq is busy. Try again in a minute.' });
-        if (gr.status === 400 || gr.status === 404) return res.status(502).json({ error: 'Groq did not accept the model name. Set GROQ_VISION_MODEL in Render to a current vision model.' });
-        return res.status(502).json({ error: 'Groq had a problem. Try again later.' });
+        return res.status(502).json({ error: 'Groq said: ' + (why || ('error ' + gr.status)) });
       }
       const text = gj.choices && gj.choices[0] && gj.choices[0].message && gj.choices[0].message.content;
       const out = parseJson(text);
