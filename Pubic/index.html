@@ -323,12 +323,13 @@ $('#go').onclick = doSearch;
 $('#q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
 
 // youtube
+function linkName(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'link'; } }
 function videos(el, vids) {
   el.className = vids && vids.length ? '' : 'msg';
   el.innerHTML = vids && vids.length ? vids.map((v) =>
     '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
-    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
+    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + (v.links && v.links.length ? '<div class="meta"><b>Product links:</b> ' + v.links.map((u) => '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(linkName(u)) + '</a>').join(' · ') + '</div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
 function jumpTo(sel) { const el = $(sel); if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 $('#cardSaved').onclick = () => jumpTo('#dTopH');
