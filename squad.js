@@ -13,7 +13,7 @@ const express = require('express');
 const db = require('./db');
 
 module.exports = function (app) {
-  const KEY = process.env.SQUAD_SECRET_KEY || '';
+  const KEY = (process.env.SQUAD_SECRET_KEY || '').trim();
   const BASE = (process.env.SQUAD_BASE || 'https://sandbox-api-d.squadco.com').replace(/\/+$/, '');
   const AMOUNT = Number(process.env.SQUAD_AMOUNT || 30);
   const CURRENCY = (process.env.SQUAD_CURRENCY || 'USD').toUpperCase();
@@ -26,15 +26,18 @@ module.exports = function (app) {
     try { return new Intl.NumberFormat('en', { style: 'currency', currency: CURRENCY, maximumFractionDigits: 0 }).format(AMOUNT) + ' per month'; }
     catch (e) { return AMOUNT + ' ' + CURRENCY + ' per month'; }
   };
+  // Startup note in Render > Logs (shows variable NAMES only, never the key itself).
+  console.log('Squad payments: key ' + (KEY ? 'FOUND' : 'MISSING') + ', ' + (PAYWALL ? 'app locked until paid' : 'app not locked') +
+    ', Squad variables seen on this server: [' + Object.keys(process.env).filter((k) => /squad/i.test(k)).join(', ') + ']');
   const isAdmin = (email) => ADMINS.includes(String(email || '').toLowerCase());
 
   async function status(email) {
-    if (!PAYWALL) return { billing: false, subscribed: true, price: priceText() };
-    if (isAdmin(email)) return { billing: true, subscribed: true, admin: true, price: priceText() };
+    if (!PAYWALL) return { billing: false, subscribed: true, price: priceText(), paymentsReady: !!KEY };
+    if (isAdmin(email)) return { billing: true, subscribed: true, admin: true, price: priceText(), paymentsReady: !!KEY };
     let until = null;
     try { until = await db.getSubscription(email); } catch (e) { console.error('subscription lookup failed:', e.message || e); }
     const ok = !!until && new Date(until).getTime() > Date.now();
-    return { billing: true, subscribed: ok, paidUntil: until, price: priceText() };
+    return { billing: true, subscribed: ok, paidUntil: until, price: priceText(), paymentsReady: !!KEY };
   }
   app.locals.billingStatus = status;
   app.locals.billingPublic = () => ({ billing: PAYWALL });
