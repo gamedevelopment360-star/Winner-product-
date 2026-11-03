@@ -87,8 +87,8 @@ module.exports = function (app) {
   // "Start now" button: sign in if needed, then go straight to Squad's payment page.
   app.get('/pay', async (req, res) => {
     const page = (msg) => res.status(503).send('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font:16px system-ui;background:#0f1115;color:#e8eaf0;padding:24px"><p>' + msg + '</p><p><a style="color:#6cb4ff" href="/landing.html">Back</a></p>');
+    if (!req.userEmail) return res.redirect('/login.html?next=/pay'); // sign in first
     if (!KEY) return page('Payments are not set up yet.');
-    if (!req.userEmail) return res.redirect('/login.html?next=/pay');
     try {
       const st = await status(req.userEmail);
       if (PAYWALL && st.subscribed) return res.redirect('/app');
