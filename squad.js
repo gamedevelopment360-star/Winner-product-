@@ -66,26 +66,45 @@ module.exports = function (app) {
     return { ok: true, email: out.email };
   }
 
-  // Start a payment: returns the Squad checkout address.
+  // Creates a payment and returns Squad's checkout page address.
+  async function startPayment(req) {
+    const ref = 'WF' + Date.now() + crypto.randomBytes(4).toString('hex');
+    await db.createPayment(ref, req.userEmail, amountMinor, CURRENCY);
+    const j = await squad('POST', '/transaction/initiate', {
+      amount: amountMinor,
+      email: req.userEmail,
+      currency: CURRENCY,
+      initiate_type: 'inline',
+      transaction_ref: ref,
+      callback_url: baseUrl(req) + '/billing/return',
+      metadata: { product: 'Winner Finder 30 days', email: req.userEmail }
+    });
+    const url = j && j.data && (j.data.checkout_url || j.data.auth_url);
+    if (!url) throw new Error('Squad did not return a payment page.');
+    return url;
+  }
+
+  // "Start now" button: sign in if needed, then go straight to Squad's payment page.
+  app.get('/pay', async (req, res) => {
+    const page = (msg) => res.status(503).send('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font:16px system-ui;background:#0f1115;color:#e8eaf0;padding:24px"><p>' + msg + '</p><p><a style="color:#6cb4ff" href="/landing.html">Back</a></p>');
+    if (!KEY) return page('Payments are not set up yet.');
+    if (!req.userEmail) return res.redirect('/login.html?next=/pay');
+    try {
+      const st = await status(req.userEmail);
+      if (PAYWALL && st.subscribed) return res.redirect('/app');
+      res.redirect(await startPayment(req));
+    } catch (e) {
+      console.error('pay failed:', e.message || e);
+      page('Could not start the payment: ' + String(e.message || e).replace(/[<>&]/g, '').slice(0, 160));
+    }
+  });
+
+  // Same thing as a button call (returns the address instead of redirecting).
   app.post('/api/billing/checkout', async (req, res) => {
     if (!KEY) return res.status(503).json({ error: 'Payments are not set up yet (SQUAD_SECRET_KEY is missing on Render).' });
     if (!req.userEmail) return res.status(401).json({ error: 'Please sign in with Google first.' });
-    try {
-      const ref = 'WF' + Date.now() + crypto.randomBytes(4).toString('hex');
-      await db.createPayment(ref, req.userEmail, amountMinor, CURRENCY);
-      const j = await squad('POST', '/transaction/initiate', {
-        amount: amountMinor,
-        email: req.userEmail,
-        currency: CURRENCY,
-        initiate_type: 'inline',
-        transaction_ref: ref,
-        callback_url: baseUrl(req) + '/billing/return',
-        metadata: { product: 'Winner Finder 30 days', email: req.userEmail }
-      });
-      const url = j && j.data && (j.data.checkout_url || j.data.auth_url);
-      if (!url) throw new Error('Squad did not return a payment page.');
-      res.json({ url });
-    } catch (e) {
+    try { res.json({ url: await startPayment(req) }); }
+    catch (e) {
       console.error('checkout failed:', e.message || e);
       res.status(502).json({ error: 'Could not start the payment: ' + String(e.message || e).slice(0, 160) });
     }

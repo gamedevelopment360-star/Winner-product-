@@ -29,17 +29,19 @@ p.sub{text-align:center;color:var(--mute);margin:0 0 18px}
 <script>
 const $ = (s) => document.querySelector(s);
 const say = (t) => { $('#msg').textContent = t; };
+const NEXT = new URLSearchParams(location.search).get('next') || '';
+const GO = '/auth/google' + (NEXT === '/pay' ? '?next=/pay' : '');
 // already logged in? go straight to the app
-fetch('/api/auth/me').then((r) => r.ok ? r.json() : {}).then((j) => { if (j && j.loggedIn) location.href = '/'; }).catch(() => {});
+fetch('/api/auth/me').then((r) => r.ok ? r.json() : {}).then((j) => { if (j && j.loggedIn) location.href = (NEXT === '/pay' ? '/pay' : '/app'); }).catch(() => {});
 
 
 $('#google').onclick = async () => {
   say('');
   try {
-    const r = await fetch('/auth/google', { method: 'HEAD', redirect: 'manual' });
+    const r = await fetch(GO, { method: 'HEAD', redirect: 'manual' });
     if (r.status === 404) return say('Google sign-in is not set up on the server yet.');
   } catch (e) {}
-  location.href = '/auth/google';
+  location.href = GO;
 };
 </script>
 </body>

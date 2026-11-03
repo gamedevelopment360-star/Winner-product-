@@ -60,6 +60,7 @@ module.exports = function (app) {
     if (!ID || !SECRET) return res.status(404).send('Google sign-in is not set up.');
     const state = crypto.randomBytes(16).toString('hex');
     setCookie(res, 'wf_state', state, 600);
+    setCookie(res, 'wf_next', req.query.next === '/pay' ? '/pay' : '/app', 600);
     const q = new URLSearchParams({
       client_id: ID,
       redirect_uri: baseUrl(req) + '/auth/google/callback',
@@ -98,7 +99,9 @@ module.exports = function (app) {
       const body = Buffer.from(JSON.stringify({ email: info.email, name: info.name || '', exp: Date.now() + DAYS * 864e5 })).toString('base64url');
       setCookie(res, 'wf_session', body + '.' + sign(body), DAYS * 86400);
       setCookie(res, 'wf_state', '', 0);
-      res.redirect('/app');
+      const next = cookies(req).wf_next === '/pay' ? '/pay' : '/app';
+      setCookie(res, 'wf_next', '', 0);
+      res.redirect(next);
     } catch (e) {
       console.error('Google sign-in failed:', e.message);
       res.status(500).send('Google sign-in failed. Please go back and try again.');
