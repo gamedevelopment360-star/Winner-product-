@@ -126,7 +126,7 @@ footer a:hover{color:var(--text)}
  <div class="card" style="max-width:360px;margin-top:22px">
   <div class="price">$30 <span>per month</span></div>
   <p style="margin:10px 0 18px">One payment gives you 30 days of full access. Renew whenever you like.</p>
-  <a class="btn" href="/login.html">Start now</a>
+  <a class="btn" href="/pay">Start now</a>
  </div>
 </div></section>
 
@@ -166,18 +166,5 @@ footer a:hover{color:var(--text)}
  <div>© 2026 Winner Finder. All rights reserved.</div>
 </div></footer>
 
-<script>
-// Start / Open app buttons: signed-in people go to the app (which sends them to payment if they have not paid);
-// everyone else goes to the sign-in page.
-document.querySelectorAll('a[href="/login.html"]').forEach(function (a) {
-  a.addEventListener('click', function (e) {
-    e.preventDefault();
-    var go = function (u) { location.href = u; };
-    fetch('/api/auth/me').then(function (r) { return r.json(); })
-      .then(function (m) { go(m && m.loggedIn ? '/app' : '/login.html'); })
-      .catch(function () { go('/login.html'); });
-  });
-});
-</script>
 </body>
 </html>
