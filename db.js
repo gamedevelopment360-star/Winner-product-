@@ -304,6 +304,63 @@ async function listVideos(email, limit) {
   return r.rows.map((x) => x.data);
 }
 
+// Payments and subscriptions (Squad). One payment = 30 days of access.
+let billingReady = null;
+async function billingTables() {
+  if (!billingReady) {
+    const p = getPool();
+    billingReady = p.query(`CREATE TABLE IF NOT EXISTS payments (
+      ref TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      amount_minor BIGINT NOT NULL,
+      currency TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ DEFAULT now(),
+      paid_at TIMESTAMPTZ
+    )`).then(() => p.query(`CREATE TABLE IF NOT EXISTS subscriptions (
+      email TEXT PRIMARY KEY,
+      paid_until TIMESTAMPTZ NOT NULL,
+      updated TIMESTAMPTZ DEFAULT now()
+    )`)).catch((e) => { billingReady = null; throw e; });
+  }
+  return billingReady;
+}
+async function billingReadyCheck() {
+  if (!enabled() || !(await init())) throw new Error('Database is not connected.');
+  await billingTables();
+}
+async function createPayment(ref, email, amountMinor, currency) {
+  await billingReadyCheck();
+  await getPool().query('INSERT INTO payments (ref, email, amount_minor, currency) VALUES ($1, $2, $3, $4)',
+    [ref, String(email).toLowerCase(), amountMinor, currency]);
+}
+async function getPayment(ref) {
+  await billingReadyCheck();
+  const r = await getPool().query('SELECT ref, email, amount_minor, currency, status FROM payments WHERE ref = $1', [ref]);
+  return r.rows[0] || null;
+}
+// Marks the payment paid (once only) and adds `days` of access. Safe to call twice for the same payment.
+async function activatePayment(ref, days) {
+  await billingReadyCheck();
+  const p = getPool();
+  const u = await p.query("UPDATE payments SET status = 'paid', paid_at = now() WHERE ref = $1 AND status = 'pending' RETURNING email", [ref]);
+  if (u.rows[0]) {
+    await p.query(
+      `INSERT INTO subscriptions (email, paid_until) VALUES ($1, now() + ($2::int * interval '1 day'))
+       ON CONFLICT (email) DO UPDATE SET paid_until = GREATEST(subscriptions.paid_until, now()) + ($2::int * interval '1 day'), updated = now()`,
+      [u.rows[0].email, days]);
+    return { email: u.rows[0].email, activated: true };
+  }
+  const row = await getPayment(ref);
+  return { email: row ? row.email : null, activated: false };
+}
+async function getSubscription(email) {
+  if (!enabled() || !email || !(await init())) return null;
+  await billingTables();
+  const r = await getPool().query('SELECT paid_until FROM subscriptions WHERE email = $1', [String(email).toLowerCase()]);
+  return r.rows[0] ? r.rows[0].paid_until : null;
+}
+
 // Erase all saved products, history and searches (the users table is kept).
 async function wipeAll() {
   if (!enabled() || !(await init())) return false;
@@ -340,4 +397,4 @@ async function saveUser(u) {
   }
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos };
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos, createPayment, getPayment, activatePayment, getSubscription };

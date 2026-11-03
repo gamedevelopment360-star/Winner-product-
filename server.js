@@ -28,6 +28,7 @@ if (!password) {
 }
 
 require('./googleauth')(app);
+require('./squad')(app);
 require('./research')(app);
 // Find the website folder whatever its spelling on GitHub (public, Public or Pubic).
 const fs = require('fs');

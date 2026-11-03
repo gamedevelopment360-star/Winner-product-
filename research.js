@@ -498,43 +498,6 @@ function guessProduct(title, descRaw) {
   return words.length >= 1 && words.length <= 5 ? words.join(' ') : '';
 }
 
-// Demand score for one video (0-100) from public numbers only: views per day, how many
-// people liked/commented compared with views, and how recent it is. It says nothing about
-// profit; the supplier match (cost vs selling price) is what shows margin.
-function videoPotential(v) {
-  const views = v.views || 0;
-  const engagementPct = (v.likes != null && views > 0)
-    ? Math.round(((v.likes + (v.comments || 0)) / views) * 1000) / 10 : null;
-  let s = 0;
-  const vpd = v.viewsPerDay || 0;
-  s += vpd >= 5000 ? 40 : vpd >= 1000 ? 30 : vpd >= 300 ? 20 : vpd >= 100 ? 10 : 0;
-  if (engagementPct != null) s += engagementPct >= 5 ? 30 : engagementPct >= 2 ? 20 : engagementPct >= 1 ? 10 : 0;
-  const age = v.ageDays || 30;
-  s += age <= 7 ? 20 : age <= 14 ? 15 : age <= 30 ? 10 : 0;
-  if (views >= 1000) s += 10; // tiny view counts are too noisy to trust
-  const label = s >= 70 ? 'High potential' : s >= 45 ? 'Medium potential' : 'Low potential';
-  return { score: s, label, engagementPct };
-}
-
-// Pull product/shop links out of a video description. Social, chat and YouTube links are
-// left out. Short links (amzn.to, bit.ly) are kept as they are; they open the product page
-// when tapped. Many videos only say "link in bio" and have nothing to find.
-const SKIP_LINK_HOST = /(^|\.)(youtube\.com|youtu\.be|instagram\.com|tiktok\.com|facebook\.com|fb\.com|fb\.me|twitter\.com|x\.com|pinterest\.com|snapchat\.com|threads\.net|discord\.gg|discord\.com|whatsapp\.com|wa\.me|t\.me|spotify\.com|patreon\.com|paypal\.me|google\.com|goo\.gl)$/i;
-function extractShopLinks(text) {
-  const found = String(text || '').match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
-  const out = [];
-  const seen = new Set();
-  found.forEach((raw) => {
-    const url = raw.replace(/[.,;!?]+$/, '');
-    let host = '';
-    try { host = new URL(url).hostname.replace(/^www\./, '').toLowerCase(); } catch (e) { return; }
-    if (!host || SKIP_LINK_HOST.test(host) || seen.has(url)) return;
-    seen.add(url);
-    out.push(url);
-  });
-  return out.slice(0, 5);
-}
-
 module.exports = function (app) {
   // Remember what each signed-in person fetched (products and YouTube videos), so everyone keeps their own.
   app.use('/api/research', (req, res, next) => {
@@ -802,8 +765,7 @@ module.exports = function (app) {
     // The list is also kept in the database, so redeploys and sleeping do not waste YouTube's daily limit.
     if (!trendVideos.data) {
       const saved = await Promise.resolve(db.cacheGet ? db.cacheGet('yt-trending') : null).catch(() => null);
-      const hasLinksField = saved && saved.data && Array.isArray(saved.data.videos) && saved.data.videos.some((v) => v && Array.isArray(v.links) && typeof v.potentialScore === 'number');
-      if (saved && saved.data && hasLinksField) { trendVideos.data = saved.data; trendVideos.at = saved.at || 0; }
+      if (saved && saved.data) { trendVideos.data = saved.data; trendVideos.at = saved.at || 0; }
     }
     if (trendVideos.data && Date.now() - trendVideos.at < 6 * 3600 * 1000) return res.json({ ...trendVideos.data, cached: true });
     try {
@@ -862,18 +824,12 @@ module.exports = function (app) {
         const views = Number((v.statistics || {}).viewCount) || 0;
         const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
         const th = sn.thumbnails || {};
-        const st = v.statistics || {};
-        const likes = st.likeCount != null ? Number(st.likeCount) : null;     // null = the creator hid likes
-        const comments = st.commentCount != null ? Number(st.commentCount) : null;
-        const pot = videoPotential({ views, viewsPerDay: Math.round(views / ageDays), likes, comments, ageDays });
         byId[v.id] = {
           id: v.id, title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
           views, viewsPerDay: Math.round(views / ageDays),
-          likes, comments, engagementPct: pot.engagementPct, potentialScore: pot.score, potential: pot.label,
           thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
           url: 'https://www.youtube.com/watch?v=' + v.id,
-          product: guessProduct(sn.title, descRaw[v.id]),
-          links: extractShopLinks(sn.description)
+          product: guessProduct(sn.title, descRaw[v.id])
         };
       });
       // leave out lists, compilations and hauls (many products in one video); keep them only if too few remain
@@ -1058,7 +1014,4 @@ module.exports = function (app) {
       res.json({ ok: false, error: e.message || 'Lookup failed' });
     }
   });
-
-  // Finds the product in a YouTube video from its picture and text (Groq vision).
-  require('./identify')(app);
 };

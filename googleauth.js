@@ -105,9 +105,12 @@ module.exports = function (app) {
     }
   });
 
-  app.get('/api/auth/me', (req, res) => {
+  app.get('/api/auth/me', async (req, res) => {
     const s = getSession(req);
-    res.json(s ? { loggedIn: true, email: s.email, name: s.name } : { loggedIn: false });
+    if (!s) return res.json({ loggedIn: false, ...(app.locals.billingPublic ? app.locals.billingPublic() : {}) });
+    let extra = {};
+    try { if (app.locals.billingStatus) extra = await app.locals.billingStatus(s.email); } catch (e) { console.error('billing status failed:', e.message || e); }
+    res.json({ loggedIn: true, email: s.email, name: s.name, ...extra });
   });
   const out = (req, res) => { setCookie(res, 'wf_session', '', 0); res.json({ ok: true }); };
   app.post('/api/auth/logout', out);
