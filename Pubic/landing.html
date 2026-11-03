@@ -166,5 +166,18 @@ footer a:hover{color:var(--text)}
  <div>© 2026 Winner Finder. All rights reserved.</div>
 </div></footer>
 
+<script>
+// Start / Open app buttons: signed-in people go to the app (which sends them to payment if they have not paid);
+// everyone else goes to the sign-in page.
+document.querySelectorAll('a[href="/login.html"]').forEach(function (a) {
+  a.addEventListener('click', function (e) {
+    e.preventDefault();
+    var go = function (u) { location.href = u; };
+    fetch('/api/auth/me').then(function (r) { return r.json(); })
+      .then(function (m) { go(m && m.loggedIn ? '/app' : '/login.html'); })
+      .catch(function () { go('/login.html'); });
+  });
+});
+</script>
 </body>
 </html>
