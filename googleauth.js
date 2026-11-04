@@ -98,13 +98,8 @@ module.exports = function (app) {
       const body = Buffer.from(JSON.stringify({ email: info.email, name: info.name || '', exp: Date.now() + DAYS * 864e5 })).toString('base64url');
       setCookie(res, 'wf_session', body + '.' + sign(body), DAYS * 86400);
       setCookie(res, 'wf_state', '', 0);
-      // Paid people (and owners) go to the app. Unpaid people land on the home page and tap Start now themselves.
-      let dest = '/app';
-      try {
-        const st = app.locals.billingStatus ? await app.locals.billingStatus(info.email) : null;
-        if (st && st.billing && !st.subscribed) dest = '/';
-      } catch (e) {}
-      res.redirect(dest);
+      // After signing in, everyone goes back to the landing page (their name shows at the top).
+      res.redirect('/');
     } catch (e) {
       console.error('Google sign-in failed:', e.message);
       res.status(500).send('Google sign-in failed. Please go back and try again.');
