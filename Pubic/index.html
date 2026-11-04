@@ -393,7 +393,7 @@ async function postJson(url, body) {
 function renderAccount() {
   if (me.billing && !me.loggedIn) { location.href = '/login.html'; return; } // payments are on: sign in with Google first
   const locked = !!(me.billing && (!me.loggedIn || !me.subscribed));
-  if (locked && me.loggedIn && !/[?&]paid=/.test(location.search)) { location.href = '/pay'; return; } // straight to the payment page
+  if (locked && me.loggedIn && !/[?&]paid=/.test(location.search)) { location.href = '/#pricing'; return; } // back to the pricing section: they tap Start now
   document.body.classList.toggle('locked', locked);
   $('#gate').hidden = !locked;
   $('#authbox').hidden = !(me.billing && !me.loggedIn);
