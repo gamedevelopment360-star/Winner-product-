@@ -30,9 +30,9 @@ p.sub{text-align:center;color:var(--mute);margin:0 0 18px}
 const $ = (s) => document.querySelector(s);
 const say = (t) => { $('#msg').textContent = t; };
 const NEXT = new URLSearchParams(location.search).get('next') || '';
-const GO = '/auth/google' + (NEXT === '/pay' ? '?next=/pay' : '');
+const GO = '/auth/google';
 // already logged in? go straight to the app
-fetch('/api/auth/me').then((r) => r.ok ? r.json() : {}).then((j) => { if (j && j.loggedIn) location.href = (NEXT === '/pay' ? '/pay' : '/app'); }).catch(() => {});
+fetch('/api/auth/me').then((r) => r.ok ? r.json() : {}).then((j) => { if (j && j.loggedIn) location.href = (j.billing && !j.subscribed) ? '/' : '/app'; }).catch(() => {});
 
 
 $('#google').onclick = async () => {
