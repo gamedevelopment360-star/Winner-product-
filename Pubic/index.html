@@ -404,7 +404,7 @@ function renderAccount() {
   const a = $('#acct');
   if (me.loggedIn) {
     a.hidden = false;
-    a.innerHTML = '<div>' + esc(me.email) + (me.admin ? ' (owner)' : (me.billing && me.subscribed) ? ' · Paid until ' + (me.paidUntil ? new Date(me.paidUntil).toLocaleDateString() : '') : '') + '</div>' +
+    a.innerHTML = (me.name ? '<div style="color:var(--text);font-weight:600;font-size:14px">' + esc(me.name) + '</div>' : '') + '<div>' + esc(me.email) + (me.admin ? ' (owner)' : (me.billing && me.subscribed) ? ' · Paid until ' + (me.paidUntil ? new Date(me.paidUntil).toLocaleDateString() : '') : '') + '</div>' +
       '<button class="chip" id="logoutBtn">Log out</button>';
   } else { a.hidden = true; a.innerHTML = ''; }
   if (!locked && !started) { started = true; loadDash(); }
