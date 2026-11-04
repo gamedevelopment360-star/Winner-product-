@@ -42,6 +42,10 @@ footer{border-top:1px solid var(--line);padding:32px 0;color:var(--mute);font-si
 footer .wrap{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:center;justify-content:space-between}
 footer .links a{margin-right:16px}
 footer a:hover{color:var(--text)}
+.who{display:inline-flex;align-items:center;gap:8px;margin-left:16px;padding:4px 12px 4px 4px;border:1px solid var(--line);border-radius:999px;color:var(--text);font-size:14px;font-weight:600}
+.who[hidden]{display:none}
+.av{width:28px;height:28px;border-radius:50%;background:var(--accent);color:#06210f;font-weight:800;display:grid;place-items:center}
+.nm{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(max-width:820px){.hero .wrap{grid-template-columns:1fr}}
 @media(max-width:600px){header nav a.h{display:none}}
 </style>
@@ -50,7 +54,7 @@ footer a:hover{color:var(--text)}
 
 <header><div class="wrap">
  <a class="logo" href="#top">Winner <i>Finder</i></a>
- <nav><a class="h" href="#features">Features</a><a class="h" href="#pricing">Pricing</a><a class="h" href="#why">Why us</a><a class="btn" style="padding:8px 14px;margin-left:16px;color:#06210f" href="/login.html">Open app</a></nav>
+ <nav><a class="h" href="#features">Features</a><a class="h" href="#pricing">Pricing</a><a class="h" href="#why">Why us</a><a class="btn" id="openApp" style="padding:8px 14px;margin-left:16px;color:#06210f" href="/login.html">Open app</a><a class="who" id="who" href="/app" hidden><span class="av" id="av"></span><span class="nm" id="nm"></span></a></nav>
 </div></header>
 
 <section class="hero" id="top"><div class="wrap">
@@ -161,10 +165,27 @@ footer a:hover{color:var(--text)}
 
 <footer id="footer"><div class="wrap">
  <a class="logo" href="#top">Winner <i>Finder</i></a>
- <div class="links"><a href="#top">About</a><a href="#features">Services</a><a href="#">Privacy Policy</a><a href="#">Terms</a></div>
+ <div class="links"><a href="#top">About</a><a href="#features">Services</a><a href="#">Privacy Policy</a><a href="#">Terms</a><a href="#" id="logout" hidden>Log out</a></div>
  <div class="links"><a href="#">Instagram</a><a href="#">TikTok</a><a href="#">YouTube</a></div>
  <div>© 2026 Winner Finder. All rights reserved.</div>
 </div></footer>
 
+<script>
+// When someone is signed in, show their name at the top.
+fetch('/api/auth/me').then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) {
+  if (!j || !j.loggedIn) return;
+  var first = String(j.name || j.email || '').trim().split(/\s+/)[0] || 'Account';
+  document.getElementById('av').textContent = first.charAt(0).toUpperCase();
+  document.getElementById('nm').textContent = first;
+  document.getElementById('who').hidden = false;
+  document.getElementById('openApp').hidden = true;
+  var out = document.getElementById('logout');
+  out.hidden = false;
+  out.addEventListener('click', function (e) {
+    e.preventDefault();
+    fetch('/api/auth/logout', { method: 'POST' }).finally(function () { location.reload(); });
+  });
+}).catch(function () {});
+</script>
 </body>
 </html>
