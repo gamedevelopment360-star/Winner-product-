@@ -43,8 +43,11 @@ body.locked .app,body.locked .top{display:none!important}
 #gate{max-width:380px;margin:12vh auto;padding:0 16px}
 #gate .card{margin-bottom:14px}
 #gate input{width:100%;margin-top:8px}
-#acct{margin:14px 8px 0;font-size:12px;color:var(--mute)}
-#acct button{margin-top:6px;width:auto;padding:6px 10px;border:1px solid var(--line)}
+nav{display:flex;flex-direction:column}
+#acct{margin:auto 0 0;padding:14px 4px 2px;border-top:1px solid var(--line);font-size:12px;color:var(--mute)}
+#acct #logoutBtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:0;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#232834;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+#acct #logoutBtn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#acct #logoutBtn:hover,#acct #logoutBtn:focus-visible{border-color:var(--bad);color:var(--bad);background:rgba(255,92,92,.08);outline:none}
 .nh{display:flex;align-items:center;justify-content:space-between}
 .nh h1{margin-bottom:14px}
 nav .x{display:none;width:auto;border:1px solid var(--line);color:var(--text);padding:6px 12px;margin-bottom:14px}
@@ -54,7 +57,8 @@ body.navopen #scrim{display:block}
 label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 .out{font-size:18px;margin-top:14px}
 @media(max-width:760px){
- nav{position:fixed;left:-240px;z-index:5;transition:left .2s;width:230px}
+ nav{position:fixed;left:-240px;z-index:5;transition:left .2s;width:230px;height:100vh;height:100dvh;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));overflow-y:auto}
+ #acct #logoutBtn{padding:14px;min-height:48px}
  nav.open{left:0}
  nav .x{display:block}
  .top{display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--line);z-index:4}
@@ -404,7 +408,7 @@ function renderAccount() {
   const a = $('#acct');
   if (me.loggedIn) {
     a.hidden = false;
-    a.innerHTML = '<button class="chip" id="logoutBtn">Log out</button>';
+    a.innerHTML = '<button class="chip" id="logoutBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span>Log out</span></button>';
   } else { a.hidden = true; a.innerHTML = ''; }
   if (!locked && !started) { started = true; loadDash(); }
 }
@@ -431,7 +435,7 @@ $('#subBtn').onclick = () => goTo('/api/billing/checkout', '#subMsg');
 $('#subLogout').onclick = logout;
 $('#setLogout').onclick = logout;
 $('#acct').onclick = (e) => {
-  if (e.target.id === 'logoutBtn') logout();
+  if (e.target.closest && e.target.closest('#logoutBtn')) logout();
   if (e.target.id === 'manageBtn') goTo('/api/billing/portal', '#subMsg');
 };
 (async function () {
