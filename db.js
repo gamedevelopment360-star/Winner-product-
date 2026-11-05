@@ -361,6 +361,14 @@ async function getSubscription(email) {
   return r.rows[0] ? r.rows[0].paid_until : null;
 }
 
+// Remove every saved YouTube video from every account (people then re-save only what they fetch).
+async function clearVideos() {
+  if (!enabled() || !(await init())) return false;
+  await videoTable();
+  await getPool().query('TRUNCATE user_videos');
+  return true;
+}
+
 // Erase all saved products, history and searches (the users table is kept).
 async function wipeAll() {
   if (!enabled() || !(await init())) return false;
@@ -397,4 +405,4 @@ async function saveUser(u) {
   }
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos, createPayment, getPayment, activatePayment, getSubscription };
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos, clearVideos, createPayment, getPayment, activatePayment, getSubscription };

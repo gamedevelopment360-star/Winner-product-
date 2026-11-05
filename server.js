@@ -51,6 +51,15 @@ app.get('/admin/wipe', async (req, res) => {
   try { res.send((await require('./db').wipeAll()) ? 'Done. All saved products and searches were erased.' : 'Database is not connected.'); }
   catch (e) { console.error('wipe failed:', e.message || e); res.status(500).send('Wipe failed: ' + (e.message || e)); }
 });
+// One-time cleanup of saved YouTube videos. Works ONLY while RESET_KEY is set on Render: delete that setting afterwards.
+app.get('/admin/clear-videos', async (req, res) => {
+  const key = process.env.RESET_KEY || '';
+  const given = String(req.query.key || '');
+  const ok = key && given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key)) && req.query.confirm === 'yes';
+  if (!ok) return res.status(403).send('Not allowed.');
+  try { res.send((await require('./db').clearVideos()) ? 'Done. Saved YouTube videos were cleared from every account.' : 'Database is not connected.'); }
+  catch (e) { console.error('clear videos failed:', e.message || e); res.status(500).send('Failed: ' + (e.message || e)); }
+});
 // Temporary check: shows which website files the server can see. Safe to delete later.
 app.get('/debug', (req, res) => {
   try {

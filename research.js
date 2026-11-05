@@ -876,16 +876,8 @@ module.exports = function (app) {
       return res.status(500).json({ error: 'The db.js on the server is old. Upload the new db.js to the main folder (next to server.js).' });
     }
     try {
-      let videos = await db.listVideos(req.userEmail, req.query.limit);
-      if (!videos.length) {
-        // nothing saved yet: take the list the site already has and save it to this account
-        let src = trendVideos.data || null;
-        if (!src && db.cacheGet) { const c = await db.cacheGet('yt-trending').catch(() => null); src = c && c.data; }
-        if (src && Array.isArray(src.videos) && src.videos.length) {
-          await db.saveVideos(req.userEmail, src.videos);
-          videos = await db.listVideos(req.userEmail, req.query.limit);
-        }
-      }
+      // Only videos this person fetched themselves are listed (saved when they open the YouTube page).
+      const videos = await db.listVideos(req.userEmail, req.query.limit);
       res.json({ videos });
     } catch (e) {
       console.error('my videos failed:', e.message || e);
