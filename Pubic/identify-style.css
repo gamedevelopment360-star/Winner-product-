@@ -1,0 +1,20 @@
+/* identify-style.css: styles only. No existing code is changed. */
+.idbtn{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;margin-top:10px;padding:12px 18px;
+ background:linear-gradient(135deg,#34d97b 0%,#1fae5c 100%);color:#04200f;border:0;border-radius:14px;
+ font-weight:700;font-size:15px;letter-spacing:.01em;cursor:pointer;
+ box-shadow:0 4px 14px rgba(46,204,113,.28),0 1px 0 rgba(255,255,255,.25) inset;
+ transition:transform .12s,box-shadow .15s,filter .15s;-webkit-tap-highlight-color:transparent}
+.idbtn:hover{filter:brightness(1.08);box-shadow:0 6px 20px rgba(46,204,113,.4),0 1px 0 rgba(255,255,255,.25) inset}
+.idbtn:active{transform:scale(.97)}
+.idbtn:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.idbtn:disabled{opacity:.7;cursor:progress;box-shadow:none}
+.idbtn + .meta{margin-top:10px;padding:12px;background:#12151b;border:1px solid var(--line);border-radius:12px;
+ line-height:1.6;overflow-wrap:anywhere}
+.idbtn + .meta:empty{display:none}
+.idbtn + .meta a{display:inline-block;margin:4px 6px 0 0;padding:8px 14px;border-radius:999px;
+ background:#232834;border:1px solid var(--line);color:var(--link);font-weight:700;text-decoration:none}
+.idbtn + .meta a:hover{border-color:#3a4150}
+@media(max-width:360px){.idbtn{min-height:44px;font-size:14px;padding:10px 12px}}
+@media(min-width:480px){.idbtn{width:auto;min-width:200px}}
+@media(min-width:760px){.idbtn{min-width:220px;border-radius:999px}.idbtn:hover{transform:translateY(-1px)}}
+@media(prefers-reduced-motion:reduce){.idbtn{transition:none}}
