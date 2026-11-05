@@ -96,7 +96,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 
 <section class="page on" id="dash">
  <h2>Dashboard</h2>
- <div class="row"><button class="btn alt" id="dashLogout" type="button">Log out</button></div>
  <div class="grid">
   <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
   <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
@@ -402,12 +401,10 @@ function renderAccount() {
   if (me.billing) $('#priceText').textContent = (me.price || '$30 per month') + '. One payment gives you 30 days of full access.';
   $('#setAcct').textContent = me.loggedIn ? ((me.name ? me.name + ' · ' : '') + me.email) : 'Not signed in';
   $('#setLogout').hidden = !me.loggedIn;
-  $('#dashLogout').hidden = !me.loggedIn;
   const a = $('#acct');
   if (me.loggedIn) {
     a.hidden = false;
-    a.innerHTML = '<div>' + (me.admin ? 'Owner' : (me.billing && me.subscribed) ? 'Paid until ' + (me.paidUntil ? new Date(me.paidUntil).toLocaleDateString() : '') : '') + '</div>' +
-      '<button class="chip" id="logoutBtn">Log out</button>';
+    a.innerHTML = '<button class="chip" id="logoutBtn">Log out</button>';
   } else { a.hidden = true; a.innerHTML = ''; }
   if (!locked && !started) { started = true; loadDash(); }
 }
@@ -433,7 +430,6 @@ $('#authPass').onkeydown = (e) => { if (e.key === 'Enter') authSubmit('login'); 
 $('#subBtn').onclick = () => goTo('/api/billing/checkout', '#subMsg');
 $('#subLogout').onclick = logout;
 $('#setLogout').onclick = logout;
-$('#dashLogout').onclick = logout;
 $('#acct').onclick = (e) => {
   if (e.target.id === 'logoutBtn') logout();
   if (e.target.id === 'manageBtn') goTo('/api/billing/portal', '#subMsg');
