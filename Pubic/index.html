@@ -76,29 +76,36 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 #dash .stat:nth-child(4)::before{background:#ff9ecb}
 #dash .stat b{font-size:28px;line-height:1.1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 #dash .stat span{display:block;margin-top:6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em}
-#dash h2#dTopH,#dash h2#dVidH{font-size:17px;margin:28px 0 12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
-#dash #dCopyRow{margin-bottom:14px}
-#dash .item{padding:12px;gap:10px;border-radius:14px;transition:border-color .15s,background .15s}
-#dash .item:hover{border-color:#3a4150;background:#1b1f27}
-#dash .item img{width:76px;height:76px;border-radius:10px}
-#dash .item a{line-height:1.35}
+#dCopyRow{margin-bottom:14px}
+.page .item{padding:12px;gap:10px;border-radius:14px;transition:border-color .15s,background .15s}
+.page .item:hover{border-color:#3a4150;background:#1b1f27}
+.page .item img{width:76px;height:76px;border-radius:10px}
+.page .item a{line-height:1.35}
 @media(min-width:480px){
- #dash .item{padding:14px;gap:12px}
- #dash .item img{width:96px;height:96px}
+ .page .item{padding:14px;gap:12px}
+ .page .item img{width:96px;height:96px}
 }
 @media(min-width:760px){
  #dash>h2:first-child{font-size:28px}
  #dash .grid{grid-template-columns:repeat(4,1fr);gap:14px}
  #dash .stat{padding:20px 18px 16px}
  #dash .stat b{font-size:34px}
- #dash #dTop,#dash #dVid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
- #dash .item{margin-bottom:0}
+ #dTop,#dVid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+ .page .item{margin-bottom:0}
 }
 @media(min-width:1100px){
  main{max-width:1180px;padding:28px 32px}
- #dash #dTop,#dash #dVid{grid-template-columns:repeat(3,1fr)}
+ #dTop,#dVid{grid-template-columns:repeat(3,1fr)}
 }
-@media(prefers-reduced-motion:reduce){#dash .item{transition:none}}
+[hidden]{display:none!important}
+#dash .stat.tap{cursor:pointer;transition:transform .12s,border-color .15s;-webkit-tap-highlight-color:transparent}
+#dash .stat.tap:hover{border-color:#3a4150}
+#dash .stat.tap:active{transform:scale(.98)}
+#dash .stat.tap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#dash .stat .go{position:absolute;top:12px;right:14px;font-style:normal;font-size:12px;font-weight:600;color:var(--accent)}
+.backbtn{display:inline-flex;align-items:center;margin:0 0 14px;padding:8px 14px;background:#232834;color:var(--text);border:1px solid var(--line);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
+.backbtn:hover{border-color:#3a4150}
+@media(prefers-reduced-motion:reduce){.page .item{transition:none}}
 </style>
 </head>
 <body>
@@ -136,16 +143,24 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <h2>Dashboard</h2>
  <p class="dsub">Your saved products, videos and searches.</p>
  <div class="grid">
-  <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
+  <div class="card stat tap" id="cardSaved" role="button" tabindex="0"><i class="go">View ›</i><b id="sSaved">–</b><span>Products saved</span></div>
   <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
-  <div class="card stat"><b id="sVideos">–</b><span>Videos saved</span></div>
+  <div class="card stat tap" id="cardVids" role="button" tabindex="0"><i class="go">View ›</i><b id="sVideos">–</b><span>Videos saved</span></div>
   <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
  </div>
- <h2 id="dTopH" hidden>Saved products</h2>
+</section>
+
+<section class="page" id="pSaved">
+ <button class="backbtn" type="button" data-back>‹ Dashboard</button>
+ <h2>Saved products</h2>
  <div class="row" id="dCopyRow" hidden><button class="btn" id="copyAll">Copy products link</button></div>
  <div id="dTop" class="msg">Loading…</div>
- <h2 id="dVidH" hidden>Saved videos</h2>
- <div id="dVid"></div>
+</section>
+
+<section class="page" id="pVids">
+ <button class="backbtn" type="button" data-back>‹ Dashboard</button>
+ <h2>Saved videos</h2>
+ <div id="dVid" class="msg">Loading…</div>
 </section>
 
 <section class="page" id="win">
@@ -297,6 +312,16 @@ document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () =>
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
 });
+// open one page (also used by the Dashboard cards); the menu button stays highlighted on its own page
+function showPage(id, title) {
+  document.querySelectorAll('.page').forEach((p) => p.classList.toggle('on', p.id === id));
+  document.querySelectorAll('nav button[data-p]').forEach((x) => x.classList.toggle('on', x.dataset.p === (id === 'dash' || id === 'pSaved' || id === 'pVids' ? 'dash' : id)));
+  $('#ttl').textContent = title; setNav(false); window.scrollTo(0, 0);
+}
+$('#cardSaved').onclick = () => showPage('pSaved', 'Saved products');
+$('#cardVids').onclick = () => showPage('pVids', 'Saved videos');
+['#cardSaved', '#cardVids'].forEach((s) => $(s).onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $(s).click(); } });
+document.querySelectorAll('[data-back]').forEach((b) => b.onclick = () => showPage('dash', 'Dashboard'));
 $('#menu').onclick = () => setNav(!nav.classList.contains('open'));
 $('#closeNav').onclick = () => setNav(false);
 $('#scrim').onclick = () => setNav(false);
@@ -305,16 +330,14 @@ $('#scrim').onclick = () => setNav(false);
 function videoCount() { try { return parseInt(localStorage.getItem('wf_videos'), 10) || 0; } catch (e) { return 0; } }
 let dashList = [];
 async function loadDash() {
-  api('/api/saved?sort=score&limit=500').then((j) => { $('#sSaved').textContent = num(j.results.length); dashList = j.results; list($('#dTop'), j.results, ''); $('#dTopH').hidden = !j.results.length; $('#dCopyRow').hidden = !j.results.length; })
+  api('/api/saved?sort=score&limit=500').then((j) => { $('#sSaved').textContent = num(j.results.length); dashList = j.results; list($('#dTop'), j.results, 'No saved products yet. Products you search for or open from Winning Products are saved here.'); $('#dCopyRow').hidden = !j.results.length; })
     .catch((e) => { $('#dTop').textContent = e.message; });
   api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
   allHist().then((h) => $('#sSearch').textContent = num(h.length));
   api('/api/research/my-videos?limit=500').then((j) => {
     const v = j.videos || [];
     $('#sVideos').textContent = num(v.length);
-    $('#dVidH').hidden = !v.length;
     videos($('#dVid'), v);
-    if (!v.length) { $('#dVid').className = ''; $('#dVid').innerHTML = ''; }
   }).catch((e) => { $('#sVideos').textContent = '0'; $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; });
 }
 
