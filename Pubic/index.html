@@ -65,6 +65,40 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  .top button{background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 12px;font-size:18px}
  main{padding:14px}
 }
+/* ---- Dashboard design (mobile first, wider screens below) ---- */
+#dash>h2:first-child{font-size:24px;letter-spacing:-.01em;margin:0 0 4px}
+.dsub{color:var(--mute);font-size:14px;margin:0 0 18px}
+#dash .grid{grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:8px}
+#dash .stat{position:relative;overflow:hidden;padding:18px 16px 14px;border-radius:14px;background:linear-gradient(160deg,#1d212b 0%,#171a21 100%);box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 6px 18px rgba(0,0,0,.25)}
+#dash .stat::before{content:"";position:absolute;left:0;top:0;right:0;height:3px;background:var(--accent)}
+#dash .stat:nth-child(2)::before{background:#6cb4ff}
+#dash .stat:nth-child(3)::before{background:#f1c40f}
+#dash .stat:nth-child(4)::before{background:#ff9ecb}
+#dash .stat b{font-size:28px;line-height:1.1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+#dash .stat span{display:block;margin-top:6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em}
+#dash h2#dTopH,#dash h2#dVidH{font-size:17px;margin:28px 0 12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+#dash #dCopyRow{margin-bottom:14px}
+#dash .item{padding:12px;gap:10px;border-radius:14px;transition:border-color .15s,background .15s}
+#dash .item:hover{border-color:#3a4150;background:#1b1f27}
+#dash .item img{width:76px;height:76px;border-radius:10px}
+#dash .item a{line-height:1.35}
+@media(min-width:480px){
+ #dash .item{padding:14px;gap:12px}
+ #dash .item img{width:96px;height:96px}
+}
+@media(min-width:760px){
+ #dash>h2:first-child{font-size:28px}
+ #dash .grid{grid-template-columns:repeat(4,1fr);gap:14px}
+ #dash .stat{padding:20px 18px 16px}
+ #dash .stat b{font-size:34px}
+ #dash #dTop,#dash #dVid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+ #dash .item{margin-bottom:0}
+}
+@media(min-width:1100px){
+ main{max-width:1180px;padding:28px 32px}
+ #dash #dTop,#dash #dVid{grid-template-columns:repeat(3,1fr)}
+}
+@media(prefers-reduced-motion:reduce){#dash .item{transition:none}}
 </style>
 </head>
 <body>
@@ -100,6 +134,7 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 
 <section class="page on" id="dash">
  <h2>Dashboard</h2>
+ <p class="dsub">Your saved products, videos and searches.</p>
  <div class="grid">
   <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
   <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
