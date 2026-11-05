@@ -167,6 +167,7 @@ module.exports = function registerIdentify(app) {
         confidence,
         reason: clean(out.reason, 200),
         aliUrl: product ? 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(product) : '',
+        amazonUrl: product ? 'https://www.amazon.com/s?k=' + encodeURIComponent((clean(out.brand, 60) + ' ' + product).trim()) : '',
       };
       const at = Date.now();
       memory.set(id, { at, data });
