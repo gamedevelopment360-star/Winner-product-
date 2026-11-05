@@ -36,10 +36,6 @@ input{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--line
 #pickbar span{font-weight:600}
 .meta{color:var(--mute);font-size:13px;margin-top:3px}
 .badge{display:inline-block;font-size:11px;padding:2px 7px;border-radius:6px;background:#232834;margin-right:6px;color:var(--text)}
-.pot-high{background:#2ecc71;color:#000}.pot-mid{background:#f1c40f;color:#000}.pot-low{background:#555;color:#eee}
-.matchQ{min-width:0;width:58%;flex:none;padding:8px 10px;font-size:14px}
-.matchBtn{padding:8px 12px;font-size:13px}
-.matchOut .m{margin-top:6px;padding:8px;border:1px solid var(--line);border-radius:8px;font-size:13px}
 .score{color:var(--accent);font-weight:700}
 .msg{color:var(--mute);padding:10px 0}
 .err{color:var(--bad)}
@@ -47,8 +43,11 @@ body.locked .app,body.locked .top{display:none!important}
 #gate{max-width:380px;margin:12vh auto;padding:0 16px}
 #gate .card{margin-bottom:14px}
 #gate input{width:100%;margin-top:8px}
-#acct{margin:14px 8px 0;font-size:12px;color:var(--mute)}
-#acct button{margin-top:6px;width:auto;padding:6px 10px;border:1px solid var(--line)}
+nav{display:flex;flex-direction:column}
+#acct{margin:auto 0 0;padding:14px 4px 2px;border-top:1px solid var(--line);font-size:12px;color:var(--mute)}
+#acct #logoutBtn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:0;padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:#232834;color:var(--text);font-size:14px;font-weight:600;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+#acct #logoutBtn svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+#acct #logoutBtn:hover,#acct #logoutBtn:focus-visible{border-color:var(--bad);color:var(--bad);background:rgba(255,92,92,.08);outline:none}
 .nh{display:flex;align-items:center;justify-content:space-between}
 .nh h1{margin-bottom:14px}
 nav .x{display:none;width:auto;border:1px solid var(--line);color:var(--text);padding:6px 12px;margin-bottom:14px}
@@ -58,13 +57,48 @@ body.navopen #scrim{display:block}
 label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 .out{font-size:18px;margin-top:14px}
 @media(max-width:760px){
- nav{position:fixed;left:-240px;z-index:5;transition:left .2s;width:230px}
+ nav{position:fixed;left:-240px;z-index:5;transition:left .2s;width:230px;height:100vh;height:100dvh;padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));overflow-y:auto}
+ #acct #logoutBtn{padding:14px;min-height:48px}
  nav.open{left:0}
  nav .x{display:block}
  .top{display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--line);z-index:4}
  .top button{background:none;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:6px 12px;font-size:18px}
  main{padding:14px}
 }
+/* ---- Dashboard design (mobile first, wider screens below) ---- */
+#dash>h2:first-child{font-size:24px;letter-spacing:-.01em;margin:0 0 4px}
+.dsub{color:var(--mute);font-size:14px;margin:0 0 18px}
+#dash .grid{grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:8px}
+#dash .stat{position:relative;overflow:hidden;padding:18px 16px 14px;border-radius:14px;background:linear-gradient(160deg,#1d212b 0%,#171a21 100%);box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 6px 18px rgba(0,0,0,.25)}
+#dash .stat::before{content:"";position:absolute;left:0;top:0;right:0;height:3px;background:var(--accent)}
+#dash .stat:nth-child(2)::before{background:#6cb4ff}
+#dash .stat:nth-child(3)::before{background:#f1c40f}
+#dash .stat:nth-child(4)::before{background:#ff9ecb}
+#dash .stat b{font-size:28px;line-height:1.1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+#dash .stat span{display:block;margin-top:6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em}
+#dash h2#dTopH,#dash h2#dVidH{font-size:17px;margin:28px 0 12px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+#dash #dCopyRow{margin-bottom:14px}
+#dash .item{padding:12px;gap:10px;border-radius:14px;transition:border-color .15s,background .15s}
+#dash .item:hover{border-color:#3a4150;background:#1b1f27}
+#dash .item img{width:76px;height:76px;border-radius:10px}
+#dash .item a{line-height:1.35}
+@media(min-width:480px){
+ #dash .item{padding:14px;gap:12px}
+ #dash .item img{width:96px;height:96px}
+}
+@media(min-width:760px){
+ #dash>h2:first-child{font-size:28px}
+ #dash .grid{grid-template-columns:repeat(4,1fr);gap:14px}
+ #dash .stat{padding:20px 18px 16px}
+ #dash .stat b{font-size:34px}
+ #dash #dTop,#dash #dVid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+ #dash .item{margin-bottom:0}
+}
+@media(min-width:1100px){
+ main{max-width:1180px;padding:28px 32px}
+ #dash #dTop,#dash #dVid{grid-template-columns:repeat(3,1fr)}
+}
+@media(prefers-reduced-motion:reduce){#dash .item{transition:none}}
 </style>
 </head>
 <body>
@@ -77,9 +111,9 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
   <div class="meta" id="authMsg"></div>
  </div>
  <div class="card" id="subbox" hidden>
-  <b>Subscribe to use Winner Finder</b>
+  <b>Payment not completed</b>
   <div class="meta" id="priceText"></div>
-  <div class="row" style="margin-top:10px"><button class="btn" id="subBtn">Subscribe</button><button class="btn alt" id="subLogout">Log out</button></div>
+  <div class="row" style="margin-top:10px"><button class="btn" id="subBtn">Pay now</button><button class="btn alt" id="subLogout">Log out</button></div>
   <div class="meta" id="subMsg"></div>
  </div>
 </div>
@@ -100,16 +134,17 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 
 <section class="page on" id="dash">
  <h2>Dashboard</h2>
+ <p class="dsub">Your saved products, videos and searches.</p>
  <div class="grid">
-  <div class="card stat" id="cardSaved" style="cursor:pointer"><b id="sSaved">–</b><span>Products saved ↓</span></div>
+  <div class="card stat"><b id="sSaved">–</b><span>Products saved</span></div>
   <div class="card stat"><b id="sRising">–</b><span>Rising products</span></div>
-  <div class="card stat" id="cardVids" style="cursor:pointer"><b id="sVideos">–</b><span>Trending videos saved ↓</span></div>
+  <div class="card stat"><b id="sVideos">–</b><span>Videos saved</span></div>
   <div class="card stat"><b id="sSearch">–</b><span>Recent searches</span></div>
  </div>
  <h2 id="dTopH" hidden>Saved products</h2>
  <div class="row" id="dCopyRow" hidden><button class="btn" id="copyAll">Copy products link</button></div>
  <div id="dTop" class="msg">Loading…</div>
- <h2 id="dVidH" hidden>Trending products saved (YouTube videos)</h2>
+ <h2 id="dVidH" hidden>Saved videos</h2>
  <div id="dVid"></div>
 </section>
 
@@ -280,10 +315,6 @@ async function loadDash() {
     $('#dVidH').hidden = !v.length;
     videos($('#dVid'), v);
     if (!v.length) { $('#dVid').className = ''; $('#dVid').innerHTML = ''; }
-    // Also fill the YouTube screen with the saved list after a refresh, so it does not start blank.
-    // Tapping the Trending button still replaces it with fresh results.
-    const yo = $('#yOut');
-    if (v.length && !yo.innerHTML.trim()) videos(yo, v);
   }).catch((e) => { $('#sVideos').textContent = '0'; $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; });
 }
 
@@ -327,52 +358,13 @@ $('#go').onclick = doSearch;
 $('#q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
 
 // youtube
-function potentialBadge(v) {
-  if (!v.potential) return '';
-  const cls = v.potential === 'High potential' ? 'pot-high' : v.potential === 'Medium potential' ? 'pot-mid' : 'pot-low';
-  return '<span class="badge ' + cls + '">' + esc(v.potential) + (typeof v.potentialScore === 'number' ? ' ' + v.potentialScore + '/100' : '') + '</span>';
-}
-function engagementLine(v) {
-  if (v.likes == null && v.comments == null && !v.potential) return '';
-  return '<div class="meta">👍 ' + (v.likes == null ? 'hidden' : num(v.likes)) + ' · 💬 ' + (v.comments == null ? 'off' : num(v.comments)) +
-    (v.engagementPct != null ? ' · engagement ' + v.engagementPct + '%' : '') + '</div><div class="meta">' + potentialBadge(v) + '</div>';
-}
-function matcherHtml(v) {
-  const first = String(v.product || '').split(',')[0].trim();
-  return '<div class="meta"><input class="matchQ" value="' + esc(first) + '" placeholder="product name"> <button class="btn matchBtn">Find supplier</button></div><div class="matchOut"></div>';
-}
-function matchRow(p) {
-  const cost = Number(p.cost), sell = Number(p.suggestedPrice);
-  const margin = cost > 0 && sell > 0 ? ' · margin ~$' + (sell - cost).toFixed(2) : '';
-  return '<div class="m"><a href="' + esc(productUrl(p)) + '" target="_blank" rel="noopener">' + esc(p.name || 'Product') + '</a><br>' +
-    '<span class="badge">' + (p.source === 'aliexpress' ? 'AliExpress' : 'CJ') + '</span>' +
-    'Cost $' + (cost || 0).toFixed(2) + ' · Sell ~$' + (sell || 0).toFixed(2) + margin + ' · Score ' + esc(p.score) + '</div>';
-}
-function linkName(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return 'link'; } }
 function videos(el, vids) {
   el.className = vids && vids.length ? '' : 'msg';
   el.innerHTML = vids && vids.length ? vids.map((v) =>
     '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
-    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + (v.links && v.links.length ? '<div class="meta"><b>Product links:</b> ' + v.links.map((u) => '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(linkName(u)) + '</a>').join(' · ') + '</div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div>' + engagementLine(v) + matcherHtml(v) + '</div></div>').join('') : 'No videos found.';
+    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest ? e.target.closest('.matchBtn') : null;
-  if (!btn) return;
-  const card = btn.closest('.item');
-  const q = card.querySelector('.matchQ').value.trim();
-  const out = card.querySelector('.matchOut');
-  if (!q) { out.innerHTML = '<div class="meta">Type the product name first.</div>'; return; }
-  out.innerHTML = '<div class="meta">Searching CJ and AliExpress…</div>';
-  try {
-    const j = await api('/api/research?q=' + encodeURIComponent(q));
-    const top = (j.results || []).slice(0, 3);
-    out.innerHTML = top.length ? top.map(matchRow).join('') : '<div class="meta">No supplier match found. Try different words.</div>';
-  } catch (err) { out.innerHTML = '<div class="meta">' + esc(err.message) + '</div>'; }
-});
-function jumpTo(sel) { const el = $(sel); if (el && !el.hidden) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-$('#cardSaved').onclick = () => jumpTo('#dTopH');
-$('#cardVids').onclick = () => jumpTo('#dVidH');
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
   try { const j = await api('/api/research/youtube-trending'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
@@ -438,19 +430,20 @@ async function postJson(url, body) {
   return j;
 }
 function renderAccount() {
+  if (me.billing && !me.loggedIn) { location.href = '/login.html'; return; } // payments are on: sign in with Google first
   const locked = !!(me.billing && (!me.loggedIn || !me.subscribed));
+  if (locked && me.loggedIn && !/[?&]paid=/.test(location.search)) { location.href = '/#pricing'; return; } // back to the pricing section: they tap Start now
   document.body.classList.toggle('locked', locked);
   $('#gate').hidden = !locked;
   $('#authbox').hidden = !(me.billing && !me.loggedIn);
   $('#subbox').hidden = !(me.billing && me.loggedIn && !me.subscribed);
-  if (me.billing) $('#priceText').textContent = (me.price || '$30 per month') + '. Cancel any time.';
+  if (me.billing) $('#priceText').textContent = (me.price || '$30 per month') + '. One payment gives you 30 days of full access.';
   $('#setAcct').textContent = me.loggedIn ? ((me.name ? me.name + ' · ' : '') + me.email) : 'Not signed in';
   $('#setLogout').hidden = !me.loggedIn;
   const a = $('#acct');
   if (me.loggedIn) {
     a.hidden = false;
-    a.innerHTML = '<div>' + esc(me.email) + (me.admin ? ' (owner)' : me.subscribed ? ' · Subscribed' : '') + '</div>' +
-      (me.subscribed && !me.admin ? '<button class="chip" id="manageBtn">Manage billing</button> ' : '') + '<button class="chip" id="logoutBtn">Log out</button>';
+    a.innerHTML = '<button class="chip" id="logoutBtn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span>Log out</span></button>';
   } else { a.hidden = true; a.innerHTML = ''; }
   if (!locked && !started) { started = true; loadDash(); }
 }
@@ -477,12 +470,16 @@ $('#subBtn').onclick = () => goTo('/api/billing/checkout', '#subMsg');
 $('#subLogout').onclick = logout;
 $('#setLogout').onclick = logout;
 $('#acct').onclick = (e) => {
-  if (e.target.id === 'logoutBtn') logout();
+  if (e.target.closest && e.target.closest('#logoutBtn')) logout();
   if (e.target.id === 'manageBtn') goTo('/api/billing/portal', '#subMsg');
 };
 (async function () {
   await refreshMe();
-  if (/[?&]paid=1/.test(location.search)) { // back from Stripe: confirmation can take a few seconds
+  if (/[?&]paid=0/.test(location.search)) {
+    $('#subMsg').textContent = 'We could not confirm your payment. If you were charged, wait a minute and reload this page.';
+    history.replaceState(null, '', '/app');
+  }
+  if (/[?&]paid=1/.test(location.search)) { // back from the payment page: confirmation can take a few seconds
     $('#subMsg').textContent = 'Thank you! Confirming your payment...';
     for (let i = 0; i < 15 && !me.subscribed; i++) { await new Promise((r) => setTimeout(r, 2000)); await refreshMe(); }
     history.replaceState(null, '', '/app');
