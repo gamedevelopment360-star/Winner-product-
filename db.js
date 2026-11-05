@@ -272,13 +272,23 @@ async function cacheSet(key, value) {
 let videoTableReady = null;
 async function videoTable() {
   if (!videoTableReady) {
-    videoTableReady = getPool().query(`CREATE TABLE IF NOT EXISTS user_videos (
+    const p = getPool();
+    videoTableReady = p.query(`CREATE TABLE IF NOT EXISTS user_videos (
       email TEXT NOT NULL,
       vid TEXT NOT NULL,
       data JSONB NOT NULL,
       saved_at TIMESTAMPTZ DEFAULT now(),
       PRIMARY KEY (email, vid)
-    )`).catch((e) => { videoTableReady = null; throw e; });
+    )`).then(async () => {
+      // One time only: an earlier version copied the shared video list into every account. Clear those copies.
+      await cacheTable();
+      const done = await p.query("SELECT 1 FROM kv_cache WHERE key = 'videos-cleanup-1'");
+      if (!done.rows.length) {
+        await p.query('TRUNCATE user_videos');
+        await p.query("INSERT INTO kv_cache (key, value) VALUES ('videos-cleanup-1', '{}'::jsonb) ON CONFLICT (key) DO NOTHING");
+        console.log('Cleared saved videos copied into every account (one time).');
+      }
+    }).catch((e) => { videoTableReady = null; throw e; });
   }
   return videoTableReady;
 }

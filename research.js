@@ -520,6 +520,7 @@ module.exports = function (app) {
 
   app.get('/api/version', (req, res) => res.json({
     version: 'relevance-v9-users',
+    videoFix: true,
     databaseFile: (typeof db.cacheGet === 'function' && typeof db.claimProducts === 'function' && typeof db.saveVideos === 'function') ? 'up to date' : 'OLD: upload the new db.js to the main folder'
   }));
   const winnersCache = new Map(); // cj key -> { at, results }
