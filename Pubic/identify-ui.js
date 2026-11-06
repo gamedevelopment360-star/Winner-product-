@@ -74,6 +74,7 @@
   }
 
   function scan() {
+    var fresh = [];
     var cards = document.querySelectorAll('.card.item, .card');
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
@@ -87,6 +88,43 @@
       var has = false, bs = card.querySelectorAll('button');
       for (var j = 0; j < bs.length; j++) if (/identify/i.test(bs[j].textContent)) has = true;
       if (!has) addButton(card, m[1]);
+      fresh.push({ card: card, id: m[1] });
+    }
+    if (fresh.length) fixProductLines(fresh.slice(0, 60));
+  }
+
+  // Replace the guessed "Product:" line (from title words) with a name the AI understood.
+  // If the AI is not sure, the line is removed.
+  function productLine(card) {
+    var ms = card.querySelectorAll('.meta');
+    for (var k = 0; k < ms.length; k++) if (/^\s*Product:/i.test(ms[k].textContent)) return ms[k];
+    return null;
+  }
+  function fixProductLines(items) {
+    for (var i = 0; i < items.length; i += 20) {
+      (function (chunk) {
+        chunk.forEach(function (x) { var l = productLine(x.card); if (l) l.style.display = 'none'; });
+        fetch('/api/research/video-products?ids=' + chunk.map(function (x) { return x.id; }).join(','), { credentials: 'same-origin' })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var map = (d && d.products) || {};
+            chunk.forEach(function (x) {
+              var l = productLine(x.card);
+              if (!l) return;
+              var name = map[x.id];
+              if (!name) { l.remove(); return; }
+              l.textContent = '';
+              var b = document.createElement('b');
+              b.textContent = 'Product: ';
+              l.appendChild(b);
+              l.appendChild(link(name, 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(name)));
+              l.style.display = '';
+            });
+          })
+          .catch(function () {
+            chunk.forEach(function (x) { var l = productLine(x.card); if (l) l.style.display = ''; });
+          });
+      })(items.slice(i, i + 20));
     }
   }
 
