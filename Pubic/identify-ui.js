@@ -1,5 +1,5 @@
 // identify-ui.js: adds an "Identify product" button to every YouTube video card.
-// It shows the product name plus AliExpress and Amazon search links (a list when the video has several products).
+// It shows the product name as an AliExpress link (a list when the video has several products).
 // Needs the server route /api/research/identify (identify.js).
 (function () {
   var ID_RE = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/;
@@ -30,13 +30,9 @@
         row.className = 'idrow';
         var t = document.createElement('div');
         t.className = 'idrowname';
-        t.textContent = (i + 1) + '. ' + p.product + (p.brand ? ' (' + p.brand + ')' : '');
-        var l = document.createElement('div');
-        l.className = 'idrowlinks';
-        l.appendChild(link('AliExpress', p.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(p.product))));
-        l.appendChild(link('Amazon', p.amazonUrl || ('https://www.amazon.com/s?k=' + encodeURIComponent(p.product))));
+        t.appendChild(document.createTextNode((i + 1) + '. '));
+        t.appendChild(link(p.product + (p.brand ? ' (' + p.brand + ')' : ''), p.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(p.product))));
         row.appendChild(t);
-        row.appendChild(l);
         out.appendChild(row);
       });
       return;
@@ -44,12 +40,8 @@
     var b = document.createElement('b');
     b.textContent = 'Product: ';
     out.appendChild(b);
-    out.appendChild(document.createTextNode(d.product + (d.brand ? ' (' + d.brand + ')' : '') + ' · ' + (d.confidence || '') + ' confidence '));
-    var q = encodeURIComponent(((d.brand || '') + ' ' + d.product).trim());
-    out.appendChild(document.createElement('br'));
-    out.appendChild(link('Find on AliExpress', d.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(d.product))));
-    out.appendChild(document.createTextNode(' · '));
-    out.appendChild(link('Find on Amazon', d.amazonUrl || ('https://www.amazon.com/s?k=' + q)));
+    out.appendChild(link(d.product + (d.brand ? ' (' + d.brand + ')' : ''), d.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(d.product))));
+    out.appendChild(document.createTextNode(' · ' + (d.confidence || '') + ' confidence'));
     if (d.reason) {
       out.appendChild(document.createElement('br'));
       out.appendChild(document.createTextNode(d.reason));

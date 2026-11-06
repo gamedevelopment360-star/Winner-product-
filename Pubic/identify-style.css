@@ -22,6 +22,5 @@
 /* list of several products */
 .idbtn + .meta .idhead{font-weight:700;margin-bottom:6px}
 .idbtn + .meta .idrow{padding:10px 0;border-top:1px solid var(--line)}
-.idbtn + .meta .idrowname{font-weight:700;line-height:1.35}
-.idbtn + .meta .idrowlinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.idbtn + .meta .idrowlinks a{margin:0;padding:6px 12px;font-size:13px}
+.idbtn + .meta .idrowname{font-weight:700;line-height:1.4}
+.idbtn + .meta .idrowname a,.idbtn + .meta > a{display:inline;margin:0;padding:0;background:none;border:0;border-radius:0;text-decoration:underline}
