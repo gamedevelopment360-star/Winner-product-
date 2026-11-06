@@ -31,7 +31,7 @@
         var t = document.createElement('div');
         t.className = 'idrowname';
         t.appendChild(document.createTextNode((i + 1) + '. '));
-        t.appendChild(link(p.product + (p.brand ? ' (' + p.brand + ')' : ''), p.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(p.product))));
+        t.appendChild(link(p.product + (p.brand ? ' (' + p.brand + ')' : ''), p.aliUrl || ('/api/research/ali-go?q=' + encodeURIComponent(p.product))));
         row.appendChild(t);
         out.appendChild(row);
       });
@@ -40,7 +40,7 @@
     var b = document.createElement('b');
     b.textContent = 'Product: ';
     out.appendChild(b);
-    out.appendChild(link(d.product + (d.brand ? ' (' + d.brand + ')' : ''), d.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(d.product))));
+    out.appendChild(link(d.product + (d.brand ? ' (' + d.brand + ')' : ''), d.aliUrl || ('/api/research/ali-go?q=' + encodeURIComponent(d.product))));
     out.appendChild(document.createTextNode(' · ' + (d.confidence || '') + ' confidence'));
     if (d.reason) {
       out.appendChild(document.createElement('br'));
@@ -117,7 +117,7 @@
               var b = document.createElement('b');
               b.textContent = 'Product: ';
               l.appendChild(b);
-              l.appendChild(link(name, 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(name)));
+              l.appendChild(link(name, '/api/research/ali-go?q=' + encodeURIComponent(name)));
               l.style.display = '';
             });
           })
