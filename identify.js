@@ -118,23 +118,61 @@ async function geminiChat(key, prompt, thumb, videoId) {
 }
 
 // Finds the top real AliExpress product page for a product name (uses your RAPIDAPI_KEY, same as research.js).
+// Returns { url, status } where status is 'ok', 'none' (AliExpress has no matching product), 'nokey' or 'error'.
 function idSleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 async function aliTopLink(name) {
   const apiKey = process.env.RAPIDAPI_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { url: null, status: 'nokey' };
   try {
     const r = await fetch('https://aliexpress-datahub.p.rapidapi.com/item_search_2?q=' + encodeURIComponent(name) + '&page=1', {
       headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'aliexpress-datahub.p.rapidapi.com' },
     });
-    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { url: null, status: 'error' };
+    const j = await r.json().catch(() => null);
+    if (!j) return { url: null, status: 'error' };
     const list = (j.result && j.result.resultList) || [];
+    const words = String(name).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
     for (const block of list) {
       const x = block.item || block;
       const itemId = x.itemId || x.productId || x.id;
-      if (itemId) return 'https://www.aliexpress.com/item/' + itemId + '.html';
+      if (!itemId) continue;
+      const title = String(x.title || x.productTitle || '').toLowerCase();
+      if (words.length && !words.some((w) => title.includes(w))) continue; // must look like the product
+      return { url: 'https://www.aliexpress.com/item/' + itemId + '.html', status: 'ok' };
     }
-  } catch (e) { /* fall back to the search page */ }
-  return null;
+    return { url: null, status: 'none' };
+  } catch (e) { return { url: null, status: 'error' }; }
+}
+
+// Cached + rate-limited lookup (one AliExpress call per second, each product saved for 30 days).
+const goMemory = new Map(); // name -> { at, url }
+const goDay = { day: '', n: 0 };
+let goQueue = Promise.resolve();
+async function resolveAli(name) {
+  const k = String(name).toLowerCase();
+  let hit = goMemory.get(k);
+  if (!hit && db && db.cacheGet) {
+    const saved = await Promise.resolve(db.cacheGet('aligo1:' + k)).catch(() => null);
+    if (saved && saved.data && saved.data.url) { hit = { at: saved.at || Date.now(), url: saved.data.url }; goMemory.set(k, hit); }
+  }
+  if (hit && Date.now() - hit.at < TTL) return { url: hit.url, status: 'ok' };
+  const job = goQueue.then(async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    if (goDay.day !== day) { goDay.day = day; goDay.n = 0; }
+    if (goDay.n >= (parseInt(process.env.ALI_GO_DAILY_LIMIT, 10) || 300)) return { url: null, status: 'error' };
+    goDay.n++;
+    const res = await aliTopLink(name);
+    await idSleep(1100);
+    return res;
+  });
+  goQueue = job.catch(() => {});
+  const res = await job;
+  if (res.status === 'ok') {
+    const at = Date.now();
+    goMemory.set(k, { at, url: res.url });
+    if (db && db.cacheSet) Promise.resolve(db.cacheSet('aligo1:' + k, { at, data: { url: res.url } })).catch(() => {});
+  }
+  return res;
 }
 
 // ---- Batch product names for the video LIST (text only, one AI call for up to 20 videos) ----
@@ -208,7 +246,11 @@ function registerVideoProducts(app) {
               for (const it of parsed.items) {
                 const id = clean(it && it.id, 20);
                 if (!need.includes(id)) continue;
-                const product = clean(it.product, 60);
+                let product = clean(it.product, 60);
+                if (product) {
+                  const r = await resolveAli(product);
+                  if (r.status === 'none') product = '';
+                }
                 out[id] = product;
                 vpMemory.set(id, { at, product });
                 if (db && db.cacheSet) Promise.resolve(db.cacheSet('vprod1:' + id, { at, data: { product } })).catch(() => {});
@@ -225,35 +267,16 @@ function registerVideoProducts(app) {
   });
 }
 
-// Opens the top real AliExpress product page for a product name when the link is tapped (one lookup per tap, saved 30 days).
-const goMemory = new Map(); // name -> { at, url }
-const goDay = { day: '', n: 0 };
+// Fallback when a link is tapped: opens the product page (or the search page if none).
 function registerAliGo(app) {
   app.get('/api/research/ali-go', async (req, res) => {
     const q = clean(req.query.q, 80);
     const search = 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(q);
     if (!q) return res.redirect(302, 'https://www.aliexpress.com/');
     try {
-      const k = q.toLowerCase();
-      let hit = goMemory.get(k);
-      if (!hit && db && db.cacheGet) {
-        const saved = await Promise.resolve(db.cacheGet('aligo1:' + k)).catch(() => null);
-        if (saved && saved.data && saved.data.url) { hit = { at: saved.at || Date.now(), url: saved.data.url }; goMemory.set(k, hit); }
-      }
-      if (hit && Date.now() - hit.at < TTL) return res.redirect(302, hit.url);
-      const day = new Date().toISOString().slice(0, 10);
-      if (goDay.day !== day) { goDay.day = day; goDay.n = 0; }
-      if (goDay.n >= (parseInt(process.env.ALI_GO_DAILY_LIMIT, 10) || 300)) return res.redirect(302, search);
-      goDay.n++;
-      const u = await aliTopLink(q);
-      if (!u) return res.redirect(302, search);
-      const at = Date.now();
-      goMemory.set(k, { at, url: u });
-      if (db && db.cacheSet) Promise.resolve(db.cacheSet('aligo1:' + k, { at, data: { url: u } })).catch(() => {});
-      return res.redirect(302, u);
-    } catch (e) {
-      return res.redirect(302, search);
-    }
+      const r = await resolveAli(q);
+      return res.redirect(302, r.url || search);
+    } catch (e) { return res.redirect(302, search); }
   });
 }
 
@@ -384,6 +407,19 @@ module.exports = function registerIdentify(app) {
       // keep only products the AI is sure about (high or medium). Unsure ones are never shown.
       const sure = products.filter((x) => x.confidence !== 'low');
       products.splice(0, products.length, ...sure.slice(0, 10));
+      // Direct AliExpress product page for each product. Products AliExpress does not have are not shown.
+      let aliNote = '';
+      for (let i = products.length - 1; i >= 0; i--) products[i].aliUrl = '';
+      for (let i = 0; i < products.length; i++) {
+        const r = await resolveAli(products[i].product);
+        if (r.status === 'ok') products[i].aliUrl = r.url;
+        else if (r.status === 'none') products[i].drop = true;
+        else {
+          aliNote = r.status === 'nokey' ? 'AliExpress lookup is not set up (RAPIDAPI_KEY is missing), so links open a search page.' : 'AliExpress lookup failed, so some links open a search page.';
+          products[i].aliUrl = 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(products[i].product);
+        }
+      }
+      for (let i = products.length - 1; i >= 0; i--) if (products[i].drop) products.splice(i, 1);
       const first = products[0] || { product: '', brand: '', confidence: 'low', aliUrl: '', amazonUrl: '' };
       const data = {
         id,
@@ -391,7 +427,7 @@ module.exports = function registerIdentify(app) {
         brand: first.brand,
         category,
         confidence: first.confidence,
-        reason: clean(out.reason, 200),
+        reason: (products.length || !list.length ? clean(out.reason, 200) : 'No matching product found on AliExpress.') + (aliNote ? ' ' + aliNote : ''),
         aliUrl: first.aliUrl,
         amazonUrl: first.amazonUrl,
         products,
