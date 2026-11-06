@@ -379,6 +379,10 @@ async function clearVideos() {
   return true;
 }
 
+// Search history was removed. These stay so older code that still calls them keeps working.
+async function saveSearch() { return false; }
+async function listSearches() { return []; }
+
 // Erase all saved products, history and searches (the users table is kept).
 async function wipeAll() {
   if (!enabled() || !(await init())) return false;
@@ -415,4 +419,4 @@ async function saveUser(u) {
   }
 }
 
-module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos, clearVideos, createPayment, getPayment, activatePayment, getSubscription };
+module.exports = { enabled, saveProducts, listProducts, listRising, listDemand, count, saveUser, claimProducts, wipeAll, cacheGet, cacheSet, saveVideos, listVideos, clearVideos, saveSearch, listSearches, createPayment, getPayment, activatePayment, getSubscription };

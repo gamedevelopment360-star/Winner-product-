@@ -312,6 +312,14 @@ function mapAliProduct(x, maxCost) {
   if (!cost || cost <= 0 || cost > limit) return null;
   const itemId = x.itemId || x.productId || x.id;
   if (!itemId) return null;
+  // Only proven products: at least ALI_MIN_SOLD orders (default 100,000) and a positive rating of
+  // ALI_MIN_POSITIVE% to ALI_MAX_POSITIVE% (default 80 to 99). Positive % is estimated from the star rating (stars / 5).
+  const soldNum = x.sales != null ? firstNum(x.sales) : null;
+  if (soldNum == null || soldNum < (parseInt(process.env.ALI_MIN_SOLD, 10) || 100000)) return null;
+  const stars = x.averageStarRate != null ? Number(x.averageStarRate) : null;
+  if (stars == null || !isFinite(stars)) return null;
+  const pos = (stars / 5) * 100;
+  if (pos < (parseFloat(process.env.ALI_MIN_POSITIVE) || 80) || pos > (parseFloat(process.env.ALI_MAX_POSITIVE) || 99)) return null;
   const p = {
     pid: 'ali_' + itemId,
     name: x.title || x.productTitle || 'Unnamed product',
@@ -478,26 +486,6 @@ function summarizeVideos(items, query) {
 }
 
 // ---------- routes ----------
-// Guess the product name from a video's title and description.
-// 1) hashtags that name a thing (not #viral, #shorts, #amazonfinds ...), 2) else the title with filler words removed.
-const GENERIC_TAG = /amazon|tiktok|viral|short|fyp|foryou|trend|product|gadget|find|haul|review|unbox|shop|deal|must|youtube|reel|vlog|asmr|ranking|best|top|hack|cool|wow|new|life|parent|mom|dad|lover|subscribe|follow|like|share|fun|funny|satisfying|diy|tips?|ideas?|2025|2026|usa|us|uk|link|bio|ad|sponsored|gift|christmas|summer|winter/i;
-const GENERIC_WORD = /^(dogs?|cats?|pets?|kitchen|home|car|beauty|fitness|health|baby|kids?|tech|travel|outdoor)$/i;
-const TITLE_FILLER = /\b(can'?t|cannot|believe|how|well|this|that|these|those|works?|you|your|need(ed)?|didn'?t|don'?t|know|until|now|make|made|me|buy|bought|it|tiktok|amazon|finds?|musts?|haves?|viral|products?|gadgets?|home|wonder|lived|without|them|the|a|an|is|are|was|of|for|to|and|or|with|in|on|at|my|i|we|worth|hype|review(ed)?|best|new|cool|stuff|why|still|like|smells?|things?|stuff|items?|ideas?|under|going|goes|went|blew|up|got|get|just|so|really|very|top|\d+)\b/gi;
-function splitTag(t) { return t.replace(/([a-z])([A-Z])/g, '$1 $2'); }
-function guessProduct(title, descRaw) {
-  const text = String(title || '') + ' ' + String(descRaw || '').slice(0, 250);
-  const tags = [];
-  (text.match(/#[A-Za-z][A-Za-z0-9]{2,}/g) || []).forEach((h) => {
-    const w = h.slice(1);
-    if (!GENERIC_TAG.test(w) && !GENERIC_WORD.test(w) && !tags.some((x) => x.toLowerCase() === splitTag(w).toLowerCase())) tags.push(splitTag(w));
-  });
-  if (tags.length) return tags.slice(0, 3).join(', ');
-  const cleaned = String(title || '').replace(/#\S+/g, ' ').replace(/https?:\/\/\S+/g, ' ')
-    .replace(/[^A-Za-z0-9' -]/g, ' ').replace(TITLE_FILLER, ' ').replace(/\s+/g, ' ').trim();
-  const words = cleaned.split(' ').filter((w) => w.length > 1);
-  return words.length >= 1 && words.length <= 5 ? words.join(' ') : '';
-}
-
 module.exports = function (app) {
   // Remember what each signed-in person fetched (products and YouTube videos), so everyone keeps their own.
   app.use('/api/research', (req, res, next) => {
@@ -517,7 +505,6 @@ module.exports = function (app) {
     };
     next();
   });
-
   app.get('/api/version', (req, res) => res.json({
     version: 'relevance-v9-users',
     videoFix: true,
@@ -551,6 +538,7 @@ module.exports = function (app) {
     }
 
     db.saveProducts(list, q).catch((e) => console.error('save failed:', e.message || e));
+    db.saveSearch(q, list.length).catch((e) => console.error('search save failed:', e.message || e));
     res.json({ results: list.map(publicFields), cjFailed: cjResult.status === 'rejected', aliFailed: aliResult.status === 'rejected' });
   });
 
@@ -772,96 +760,37 @@ module.exports = function (app) {
     try {
       const H = { 'x-goog-api-key': key };
       const since = new Date(Date.now() - 30 * 86400000).toISOString();
-      // Separate lists by product type. One search per type (100 units each); the whole result is kept 6 hours.
-      const CATS = [
-        { name: 'Pets', q: 'viral pet product tiktok made me buy it' },
-        { name: 'Kitchen', q: 'viral kitchen gadget tiktok made me buy it' },
-        { name: 'Car', q: 'viral car accessories gadget you need' },
-        { name: 'Fitness', q: 'viral fitness gadget home workout' },
-        { name: 'Beauty', q: 'viral beauty tool tiktok made me buy it' },
-        { name: 'Home & LED', q: 'viral home gadget led lights tiktok' },
-        { name: 'Tech', q: 'viral tech gadget tiktok made me buy it' },
-        { name: 'Baby & Kids', q: 'viral baby product tiktok made me buy it' },
-        { name: 'Outdoor & Travel', q: 'viral travel gadget camping must have' },
-        { name: 'Health', q: 'viral health wellness gadget massager tiktok' }
-      ];
-      const found = []; // { cat, id }
-      let lastErr = null;
-      for (const c of CATS) {
-        const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=50&order=viewCount&relevanceLanguage=en&publishedAfter='
-          + encodeURIComponent(since) + '&q=' + encodeURIComponent(c.q);
-        const sj = await (await fetch(sUrl, { headers: H })).json();
-        if (sj.error) {
-          const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
-          lastErr = (why === 'quotaExceeded' || /quota/i.test(sj.error.message || '')) ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
-          break;
-        }
-        (sj.items || []).forEach((i) => { if (i.id && i.id.videoId) found.push({ cat: c.name, id: i.id.videoId }); });
+      const q = 'trending products ' + new Date().getFullYear();
+      const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=20&order=viewCount&relevanceLanguage=en&publishedAfter='
+        + encodeURIComponent(since) + '&q=' + encodeURIComponent(q);
+      const sj = await (await fetch(sUrl, { headers: H })).json();
+      if (sj.error) {
+        const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
+        const msg = (why === 'quotaExceeded' || /quota/i.test(sj.error.message || '')) ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error');
+        if (trendVideos.data) return res.json({ ...trendVideos.data, cached: true, stale: true }); // show the last list instead of an error
+        return res.status(502).json({ error: msg });
       }
-      if (lastErr && !found.length) {
-        if (trendVideos.data) return res.json({ ...trendVideos.data, cached: true, stale: true });
-        // nothing shared saved either: show the videos saved on this person's account
-        const mine = (req.userEmail && db.listVideos) ? await db.listVideos(req.userEmail, 100).catch(() => []) : [];
-        if (mine.length) return res.json({ videos: mine, groups: [], cached: true, stale: true });
-        return res.status(502).json({ error: lastErr });
-      }
-      const ids = Array.from(new Set(found.map((f) => f.id)));
-      if (!ids.length) return res.json({ videos: [], groups: [] });
-      const items = [];
-      for (let i = 0; i < ids.length; i += 50) {
-        const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.slice(i, i + 50).join(',');
-        const vj = await (await fetch(vUrl, { headers: H })).json();
-        if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
-        (vj.items || []).forEach((v) => items.push(v));
-      }
+      const ids = (sj.items || []).map((i) => i.id && i.id.videoId).filter(Boolean);
+      if (!ids.length) return res.json({ videos: [] });
+      const vUrl = 'https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=' + ids.join(',');
+      const vj = await (await fetch(vUrl, { headers: H })).json();
+      if (vj.error) return res.status(502).json({ error: 'YouTube said: ' + (vj.error.message || 'error') });
       const now = Date.now();
-      const byId = {};
-      const descById = {};
-      const descRaw = {};
-      items.forEach((v) => {
+      const videos = (vj.items || []).map((v) => {
         const sn = v.snippet || {};
-        descById[v.id] = String(sn.description || '').slice(0, 250).toLowerCase();
-        descRaw[v.id] = String(sn.description || '').slice(0, 250);
         const views = Number((v.statistics || {}).viewCount) || 0;
         const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
         const th = sn.thumbnails || {};
-        byId[v.id] = {
+        return {
           id: v.id, title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
           views, viewsPerDay: Math.round(views / ageDays),
           thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
-          url: 'https://www.youtube.com/watch?v=' + v.id,
-          product: guessProduct(sn.title, descRaw[v.id])
+          url: 'https://www.youtube.com/watch?v=' + v.id
         };
-      });
-      // leave out lists, compilations and hauls (many products in one video); keep them only if too few remain
-      const LISTY = /\btop\s*\d+|\bbest\s*\d+|\b\d+\s+(best|products|gadgets|items|things|finds)|compilation|collection|\bhaul\b|\bvs\b/i;
-      const mostlyLatin = (t) => { const L = (t.match(/[A-Za-z]/g) || []).length; const O = (t.match(/[\u0370-\uFFFF]/g) || []).length; return L >= 8 && L > O * 2; };
-      // Only videos about a product: the title must say it is a product video, and must not be a vlog, tutorial, prank, etc.
-      const NOT_PRODUCT = /tutorial|how to|vlog|prank|challenge|reaction|\breacts?\b|story\s?time|asmr|gameplay|minecraft|roblox|fortnite|music video|official video|lyrics|trailer|podcast|interview|\bnews\b|live\s?stream|mukbang|get ready with me|grwm|makeover|transformation|haircut|hairstyle|day in my life|full day|\bfunny\b|\bfails?\b|\bmeme/i;
-      const PRODUCTY = /\bbuy\b|bought|purchas|\breview|worth it|\bviral\b|gadget|\bproducts?\b|must[- ]?have|amazon|temu|aliexpress|shein|walmart|unbox|\btest(ed|ing)?\b|\bdupes?\b|\bfinds?\b|\btried\b|\btrying\b|\bshop\b|\bdeals?\b|\bgear\b|\btool\b|accessor|essentials?|\bhack/i;
-      const isProductVideo = (v) => !NOT_PRODUCT.test(v.title.toLowerCase()) && PRODUCTY.test(v.title.toLowerCase() + ' ' + (descById[v.id] || ''));
-      const used = new Set();
-      const groups = [];
-      for (const c of CATS) {
-        let list = found.filter((f) => f.cat === c.name).map((f) => byId[f.id]).filter((v) => v && !used.has(v.id) && mostlyLatin(v.title) && isProductVideo(v) && v.product);
-        const single = list.filter((v) => !LISTY.test(v.title));
-        if (single.length >= 3) list = single;
-        const perChannel = {};
-        list = list.sort((a, b) => b.viewsPerDay - a.viewsPerDay).filter((v) => {
-          perChannel[v.channel] = (perChannel[v.channel] || 0) + 1;
-          return perChannel[v.channel] <= 2; // at most 2 videos per channel in each list
-        }).slice(0, 10);
-        list.forEach((v) => used.add(v.id));
-        if (list.length) groups.push({ name: c.name, videos: list });
-      }
-      // "videos" is the same list flattened (list name in front of the channel), so the page shows it even without list headers
-      const videos = [];
-      groups.forEach((g) => g.videos.forEach((v) => videos.push({ ...v, channel: g.name + ' · ' + v.channel })));
-      const data = { videos, groups };
-      if (!lastErr) { // only keep a complete list
-        trendVideos.at = Date.now(); trendVideos.data = data;
-        Promise.resolve(db.cacheSet ? db.cacheSet('yt-trending', { at: trendVideos.at, data }) : null).catch((e) => console.error('could not keep video list:', e.message || e));
-      }
+      }).sort((a, b) => b.viewsPerDay - a.viewsPerDay).slice(0, 12);
+      const data = { videos };
+      trendVideos.at = Date.now(); trendVideos.data = data;
+      Promise.resolve(db.cacheSet ? db.cacheSet('yt-trending', { at: trendVideos.at, data }) : null).catch((e) => console.error('could not keep video list:', e.message || e));
       res.json(data);
     } catch (e) {
       console.error('trending videos failed:', e.message || e);
@@ -943,8 +872,16 @@ module.exports = function (app) {
     }
   });
 
-  // Your dashboard still asks for this address. Searches are no longer saved on the server, so it answers with an empty list.
-  app.get('/api/searches', (req, res) => res.json({ results: [] }));
+  // Words that were searched, newest first. ?limit=20
+  app.get('/api/searches', async (req, res) => {
+    if (!db.enabled()) return res.json({ results: [] });
+    try {
+      res.json({ results: await db.listSearches(req.query.limit) });
+    } catch (e) {
+      console.error('searches list failed:', e.message || e);
+      res.json({ results: [] });
+    }
+  });
 
   app.get('/api/research/profit', requireCjKey, async (req, res) => {
     const pid = String(req.query.pid || '');
