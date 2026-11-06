@@ -387,11 +387,11 @@ function videos(el, vids) {
   el.innerHTML = vids && vids.length ? vids.map((v) =>
     '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
-    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
+    '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views' + (v.likes != null ? ' · ' + num(v.likes) + ' likes' : '') + (v.comments != null ? ' · ' + num(v.comments) + ' comments' : '') + ' · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
-  try { const j = await api('/api/research/youtube-trending'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+  try { const j = await api('/api/research/youtube-viral'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 };
 $('#vGo').onclick = async () => {
   const q = $('#vq').value.trim(); if (!q) return;
