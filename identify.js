@@ -225,8 +225,41 @@ function registerVideoProducts(app) {
   });
 }
 
+// Opens the top real AliExpress product page for a product name when the link is tapped (one lookup per tap, saved 30 days).
+const goMemory = new Map(); // name -> { at, url }
+const goDay = { day: '', n: 0 };
+function registerAliGo(app) {
+  app.get('/api/research/ali-go', async (req, res) => {
+    const q = clean(req.query.q, 80);
+    const search = 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(q);
+    if (!q) return res.redirect(302, 'https://www.aliexpress.com/');
+    try {
+      const k = q.toLowerCase();
+      let hit = goMemory.get(k);
+      if (!hit && db && db.cacheGet) {
+        const saved = await Promise.resolve(db.cacheGet('aligo1:' + k)).catch(() => null);
+        if (saved && saved.data && saved.data.url) { hit = { at: saved.at || Date.now(), url: saved.data.url }; goMemory.set(k, hit); }
+      }
+      if (hit && Date.now() - hit.at < TTL) return res.redirect(302, hit.url);
+      const day = new Date().toISOString().slice(0, 10);
+      if (goDay.day !== day) { goDay.day = day; goDay.n = 0; }
+      if (goDay.n >= (parseInt(process.env.ALI_GO_DAILY_LIMIT, 10) || 300)) return res.redirect(302, search);
+      goDay.n++;
+      const u = await aliTopLink(q);
+      if (!u) return res.redirect(302, search);
+      const at = Date.now();
+      goMemory.set(k, { at, url: u });
+      if (db && db.cacheSet) Promise.resolve(db.cacheSet('aligo1:' + k, { at, data: { url: u } })).catch(() => {});
+      return res.redirect(302, u);
+    } catch (e) {
+      return res.redirect(302, search);
+    }
+  });
+}
+
 module.exports = function registerIdentify(app) {
   registerVideoProducts(app);
+  registerAliGo(app);
   app.get('/api/research/identify', async (req, res) => {
     try {
       const id = String(req.query.id || '');
@@ -344,20 +377,13 @@ module.exports = function registerIdentify(app) {
           product: name,
           brand,
           confidence: fixConf(x && x.confidence),
-          aliUrl: name ? 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(name) : '',
+          aliUrl: name ? '/api/research/ali-go?q=' + encodeURIComponent(name) : '',
           amazonUrl: name ? 'https://www.amazon.com/s?k=' + encodeURIComponent((brand + ' ' + name).trim()) : '',
         };
       }).filter((x) => x.product);
       // keep only products the AI is sure about (high or medium). Unsure ones are never shown.
       const sure = products.filter((x) => x.confidence !== 'low');
       products.splice(0, products.length, ...sure.slice(0, 10));
-      // Replace the AliExpress search link with the top real product page (first N products only, to save RapidAPI quota).
-      const maxLinks = parseInt(process.env.ALI_LINKS_MAX, 10) || 5;
-      for (let i = 0; i < products.length && i < maxLinks; i++) {
-        if (i > 0) await idSleep(1100);
-        const u = await aliTopLink(products[i].product);
-        if (u) products[i].aliUrl = u;
-      }
       const first = products[0] || { product: '', brand: '', confidence: 'low', aliUrl: '', amazonUrl: '' };
       const data = {
         id,
