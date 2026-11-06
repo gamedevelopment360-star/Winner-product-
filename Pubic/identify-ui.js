@@ -1,5 +1,5 @@
 // identify-ui.js: adds an "Identify product" button to every YouTube video card.
-// It shows the product name plus AliExpress and Amazon search links.
+// It shows the product name plus AliExpress and Amazon search links (a list when the video has several products).
 // Needs the server route /api/research/identify (identify.js).
 (function () {
   var ID_RE = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/;
@@ -18,6 +18,27 @@
     out.textContent = '';
     if (!d.product) {
       out.textContent = d.reason || 'No physical product found in this video.';
+      return;
+    }
+    if (d.products && d.products.length > 1) {
+      var h = document.createElement('div');
+      h.className = 'idhead';
+      h.textContent = d.products.length + ' products found';
+      out.appendChild(h);
+      d.products.forEach(function (p, i) {
+        var row = document.createElement('div');
+        row.className = 'idrow';
+        var t = document.createElement('div');
+        t.className = 'idrowname';
+        t.textContent = (i + 1) + '. ' + p.product + (p.brand ? ' (' + p.brand + ')' : '');
+        var l = document.createElement('div');
+        l.className = 'idrowlinks';
+        l.appendChild(link('AliExpress', p.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(p.product))));
+        l.appendChild(link('Amazon', p.amazonUrl || ('https://www.amazon.com/s?k=' + encodeURIComponent(p.product))));
+        row.appendChild(t);
+        row.appendChild(l);
+        out.appendChild(row);
+      });
       return;
     }
     var b = document.createElement('b');

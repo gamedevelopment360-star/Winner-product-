@@ -18,3 +18,10 @@
 @media(min-width:480px){.idbtn{width:auto;min-width:200px}}
 @media(min-width:760px){.idbtn{min-width:220px;border-radius:999px}.idbtn:hover{transform:translateY(-1px)}}
 @media(prefers-reduced-motion:reduce){.idbtn{transition:none}}
+
+/* list of several products */
+.idbtn + .meta .idhead{font-weight:700;margin-bottom:6px}
+.idbtn + .meta .idrow{padding:10px 0;border-top:1px solid var(--line)}
+.idbtn + .meta .idrowname{font-weight:700;line-height:1.35}
+.idbtn + .meta .idrowlinks{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.idbtn + .meta .idrowlinks a{margin:0;padding:6px 12px;font-size:13px}
