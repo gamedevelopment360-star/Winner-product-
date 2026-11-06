@@ -32,6 +32,7 @@ require('./squad')(app);
 require('./research')(app);
 require('./identify')(app);
 require('./viral')(app);
+require('./winner')(app);
 // Find the website folder whatever its spelling on GitHub (public, Public or Pubic).
 const fs = require('fs');
 const dirs = ['public', 'Public', 'Pubic'].map((d) => path.join(__dirname, d));

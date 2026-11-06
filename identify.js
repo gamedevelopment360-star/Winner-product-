@@ -442,3 +442,8 @@ module.exports = function registerIdentify(app) {
     }
   });
 };
+
+// shared helpers for winner.js
+module.exports.geminiText = geminiText;
+module.exports.parseJson = parseJson;
+module.exports.clean = clean;
