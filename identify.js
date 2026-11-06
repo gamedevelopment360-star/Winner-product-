@@ -1,10 +1,10 @@
 // identify.js — finds the product in a YouTube video, even when the title does not name it.
-// It reads the video's title, tags, description and THUMBNAIL picture with a Groq vision model.
+// It reads the video's title, tags, description and THUMBNAIL picture with Google Gemini (if GEMINI_API_KEY is set), otherwise a Groq vision model.
 // It does not watch the video itself (YouTube does not allow downloading videos).
 //
 // Route: GET /api/research/identify?id=VIDEOID
 // Needs in Render: YOUTUBE_API_KEY (you have it) and GROQ_API_KEY.
-// Optional: GROQ_VISION_MODEL (default below), IDENTIFY_DAILY_LIMIT (default 200 checks a day).
+// Optional: GEMINI_API_KEY, GEMINI_MODEL, GROQ_VISION_MODEL (default below), IDENTIFY_DAILY_LIMIT (default 200 checks a day).
 
 let db = null;
 try { db = require('./db'); } catch (e) { db = null; }
@@ -67,6 +67,56 @@ async function visionCandidates(groqKey) {
   } catch (e) { return []; }
 }
 
+// Asks Google Gemini to WATCH the YouTube video (and read the text). If the video cannot be read
+// (private, too long, blocked), it falls back to the thumbnail picture. Tries a few model names.
+async function geminiChat(key, prompt, thumb, videoId) {
+  let b64 = '', mime = 'image/jpeg';
+  try {
+    const ir = await fetch(thumb);
+    if (ir.ok) {
+      mime = (ir.headers.get('content-type') || 'image/jpeg').split(';')[0];
+      b64 = Buffer.from(await ir.arrayBuffer()).toString('base64');
+    }
+  } catch (e) { b64 = ''; }
+  const videoPrompt = 'You are given the actual video. Watch it (and listen to it) to see what product is shown, used or sold. ' + prompt;
+  const modes = [];
+  if (videoId) modes.push('video');
+  if (b64) modes.push('thumb');
+  const names = [process.env.GEMINI_MODEL, 'gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-flash-lite-latest']
+    .filter((v, i, a) => v && a.indexOf(v) === i);
+  let last = { ok: false, status: 502, why: 'no model worked' };
+  for (const m of names) {
+    for (const mode of modes) {
+      const parts = mode === 'video'
+        ? [{ file_data: { file_uri: 'https://www.youtube.com/watch?v=' + videoId } }, { text: videoPrompt }]
+        : [{ text: prompt }, { inline_data: { mime_type: mime, data: b64 } }];
+      try {
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(m) + ':generateContent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: { temperature: 0, maxOutputTokens: 1000, responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_LOW' },
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (r.ok) {
+          const ps = (j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts) || [];
+          const text = ps.map((x) => x.text || '').join('');
+          if (text) return { ok: true, status: 200, text, mode };
+          last = { ok: false, status: 502, why: 'empty answer' };
+          continue;
+        }
+        last = { ok: false, status: r.status, why: clean(j && j.error && j.error.message, 160) };
+        if (r.status === 404) break;          // model name not found: next model
+        if (r.status === 400) continue;       // video not readable: try the thumbnail
+        return last;                          // key problem or limit: stop
+      } catch (e) { last = { ok: false, status: 502, why: clean(e && e.message, 100) }; }
+    }
+  }
+  return last;
+}
+
 module.exports = function registerIdentify(app) {
   app.get('/api/research/identify', async (req, res) => {
     try {
@@ -76,7 +126,8 @@ module.exports = function registerIdentify(app) {
       const ytKey = process.env.YOUTUBE_API_KEY;
       const groqKey = process.env.GROQ_API_KEY;
       if (!ytKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set on the server.' });
-      if (!groqKey) return res.status(503).json({ error: 'GROQ_API_KEY is not set on the server.' });
+      const gemKey = process.env.GEMINI_API_KEY;
+      if (!groqKey && !gemKey) return res.status(503).json({ error: 'Neither GEMINI_API_KEY nor GROQ_API_KEY is set on the server.' });
 
       // already identified before? (kept 30 days, so each video costs only one check)
       const hit = memory.get(id);
@@ -131,28 +182,43 @@ module.exports = function registerIdentify(app) {
         'Tags: ' + clean((sn.tags || []).slice(0, 20).join(', '), 300) + '\n' +
         'Description: ' + clean(sn.description, 800);
 
-      let result = await groqChat(groqKey, model, prompt, thumb);
-      if (!result.ok && (result.status === 400 || result.status === 404)) {
-        // the default model name may be old: ask Groq what is available and try those
-        const tried = new Set([model]);
-        const cands = (await visionCandidates(groqKey)).filter((id) => !tried.has(id)).slice(0, 4);
-        for (const id of cands) {
-          const r2 = await groqChat(groqKey, id, prompt, thumb);
-          if (r2.ok) { result = r2; workingModel = id; break; }
+      let text = null;
+      if (gemKey) {
+        const g = await geminiChat(gemKey, prompt, thumb, id);
+        if (g.ok) text = g.text;
+        else {
+          console.error('Gemini identify failed:', g.status, g.why);
+          if (!groqKey) {
+            if (g.status === 401 || g.status === 403) return res.status(502).json({ error: 'Google did not accept the key. Check GEMINI_API_KEY in Render.' });
+            if (g.status === 429) return res.status(429).json({ error: 'Gemini free limit reached. Try again later.' });
+            return res.status(502).json({ error: 'Gemini said: ' + (g.why || ('error ' + g.status)) });
+          }
         }
-      } else if (result.ok) {
-        workingModel = model;
       }
-      const gr = { ok: result.ok, status: result.status };
-      const gj = result.json;
-      if (!gr.ok) {
-        const why = clean(gj && gj.error && gj.error.message, 160);
-        console.error('Groq identify failed:', gr.status, why);
-        if (gr.status === 401 || gr.status === 403) return res.status(502).json({ error: 'Groq did not accept the key. Check GROQ_API_KEY in Render.' });
-        if (gr.status === 429) return res.status(429).json({ error: 'Groq is busy. Try again in a minute.' });
-        return res.status(502).json({ error: 'Groq said: ' + (why || ('error ' + gr.status)) });
+      if (text == null) {
+        let result = await groqChat(groqKey, model, prompt, thumb);
+        if (!result.ok && (result.status === 400 || result.status === 404)) {
+          // the default model name may be old: ask Groq what is available and try those
+          const tried = new Set([model]);
+          const cands = (await visionCandidates(groqKey)).filter((id) => !tried.has(id)).slice(0, 4);
+          for (const id of cands) {
+            const r2 = await groqChat(groqKey, id, prompt, thumb);
+            if (r2.ok) { result = r2; workingModel = id; break; }
+          }
+        } else if (result.ok) {
+          workingModel = model;
+        }
+        const gr = { ok: result.ok, status: result.status };
+        const gj = result.json;
+        if (!gr.ok) {
+          const why = clean(gj && gj.error && gj.error.message, 160);
+          console.error('Groq identify failed:', gr.status, why);
+          if (gr.status === 401 || gr.status === 403) return res.status(502).json({ error: 'Groq did not accept the key. Check GROQ_API_KEY in Render.' });
+          if (gr.status === 429) return res.status(429).json({ error: 'Groq is busy. Try again in a minute.' });
+          return res.status(502).json({ error: 'Groq said: ' + (why || ('error ' + gr.status)) });
+        }
+        text = gj.choices && gj.choices[0] && gj.choices[0].message && gj.choices[0].message.content;
       }
-      const text = gj.choices && gj.choices[0] && gj.choices[0].message && gj.choices[0].message.content;
       const out = parseJson(text);
       if (!out) return res.status(502).json({ error: 'Could not read the answer. Try again.' });
 
