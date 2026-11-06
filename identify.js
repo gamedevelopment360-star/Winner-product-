@@ -117,6 +117,26 @@ async function geminiChat(key, prompt, thumb, videoId) {
   return last;
 }
 
+// Finds the top real AliExpress product page for a product name (uses your RAPIDAPI_KEY, same as research.js).
+function idSleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+async function aliTopLink(name) {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return null;
+  try {
+    const r = await fetch('https://aliexpress-datahub.p.rapidapi.com/item_search_2?q=' + encodeURIComponent(name) + '&page=1', {
+      headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'aliexpress-datahub.p.rapidapi.com' },
+    });
+    const j = await r.json().catch(() => ({}));
+    const list = (j.result && j.result.resultList) || [];
+    for (const block of list) {
+      const x = block.item || block;
+      const itemId = x.itemId || x.productId || x.id;
+      if (itemId) return 'https://www.aliexpress.com/item/' + itemId + '.html';
+    }
+  } catch (e) { /* fall back to the search page */ }
+  return null;
+}
+
 module.exports = function registerIdentify(app) {
   app.get('/api/research/identify', async (req, res) => {
     try {
@@ -238,6 +258,13 @@ module.exports = function registerIdentify(app) {
           amazonUrl: name ? 'https://www.amazon.com/s?k=' + encodeURIComponent((brand + ' ' + name).trim()) : '',
         };
       }).filter((x) => x.product).slice(0, 10);
+      // Replace the AliExpress search link with the top real product page (first N products only, to save RapidAPI quota).
+      const maxLinks = parseInt(process.env.ALI_LINKS_MAX, 10) || 5;
+      for (let i = 0; i < products.length && i < maxLinks; i++) {
+        if (i > 0) await idSleep(1100);
+        const u = await aliTopLink(products[i].product);
+        if (u) products[i].aliUrl = u;
+      }
       const first = products[0] || { product: '', brand: '', confidence: 'low', aliUrl: '', amazonUrl: '' };
       const data = {
         id,
