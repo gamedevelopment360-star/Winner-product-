@@ -312,14 +312,6 @@ function mapAliProduct(x, maxCost) {
   if (!cost || cost <= 0 || cost > limit) return null;
   const itemId = x.itemId || x.productId || x.id;
   if (!itemId) return null;
-  // Only proven products: at least ALI_MIN_SOLD orders (default 100,000) and a positive rating of
-  // ALI_MIN_POSITIVE% to ALI_MAX_POSITIVE% (default 80 to 99). Positive % is estimated from the star rating (stars / 5).
-  const soldNum = x.sales != null ? firstNum(x.sales) : null;
-  if (soldNum == null || soldNum < (parseInt(process.env.ALI_MIN_SOLD, 10) || 100000)) return null;
-  const stars = x.averageStarRate != null ? Number(x.averageStarRate) : null;
-  if (stars == null || !isFinite(stars)) return null;
-  const pos = (stars / 5) * 100;
-  if (pos < (parseFloat(process.env.ALI_MIN_POSITIVE) || 80) || pos > (parseFloat(process.env.ALI_MAX_POSITIVE) || 99)) return null;
   const p = {
     pid: 'ali_' + itemId,
     name: x.title || x.productTitle || 'Unnamed product',
