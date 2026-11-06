@@ -24,3 +24,13 @@
 .idbtn + .meta .idrow{padding:10px 0;border-top:1px solid var(--line)}
 .idbtn + .meta .idrowname{font-weight:700;line-height:1.4}
 .idbtn + .meta .idrowname a,.idbtn + .meta > a{display:inline;margin:0;padding:0;background:none;border:0;border-radius:0;text-decoration:underline}
+
+/* winner check */
+.idcheckwrap{margin-top:8px}
+.idcheck{padding:8px 14px;border-radius:10px;font-weight:700;font-size:13px;min-height:40px}
+.idscore:empty{display:none}
+.idscore{margin-top:8px;padding:10px;background:#0f1218;border:1px solid var(--line);border-radius:10px;font-size:13px;line-height:1.5}
+.idscorehead{font-size:16px;font-weight:700;margin-bottom:6px}
+.idscorehead.winner{color:#2ecc71}.idscorehead.maybe{color:#f1c40f}.idscorehead.skip{color:#ff7b7b}
+.idscoreline{padding:3px 0;border-top:1px solid var(--line)}
+.idscorenote{margin-top:6px;color:var(--mute);font-size:12px}

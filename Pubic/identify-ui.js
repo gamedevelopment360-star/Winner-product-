@@ -13,6 +13,51 @@
     return a;
   }
 
+  // "Check if winner" button: shows a 0-100 score from 5 checks (demand, viral videos, buyer comments, profit, problem solved).
+  function checkBox(name) {
+    var wrap = document.createElement('div');
+    wrap.className = 'idcheckwrap';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn idcheck';
+    btn.textContent = 'Check if winner';
+    var res = document.createElement('div');
+    res.className = 'idscore';
+    btn.onclick = function () {
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      res.textContent = '';
+      fetch('/api/research/winner-check?q=' + encodeURIComponent(name), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          btn.disabled = false;
+          btn.textContent = 'Check again';
+          if (d.error) { res.textContent = d.error; return; }
+          var h = document.createElement('div');
+          h.className = 'idscorehead ' + String(d.verdict).toLowerCase();
+          h.textContent = d.score + '/100 · ' + d.verdict;
+          res.appendChild(h);
+          d.parts.forEach(function (p) {
+            var line = document.createElement('div');
+            line.className = 'idscoreline';
+            var b = document.createElement('b');
+            b.textContent = p.label + ' ' + p.pts + '/' + p.max;
+            line.appendChild(b);
+            line.appendChild(document.createTextNode(' · ' + p.note));
+            res.appendChild(line);
+          });
+          var n = document.createElement('div');
+          n.className = 'idscorenote';
+          n.textContent = d.note;
+          res.appendChild(n);
+        })
+        .catch(function () { btn.disabled = false; btn.textContent = 'Check if winner'; res.textContent = 'Could not check. Try again.'; });
+    };
+    wrap.appendChild(btn);
+    wrap.appendChild(res);
+    return wrap;
+  }
+
   function show(out, d) {
     out.className = 'meta';
     out.textContent = '';
@@ -33,6 +78,7 @@
         t.appendChild(document.createTextNode((i + 1) + '. '));
         t.appendChild(link(p.product + (p.brand ? ' (' + p.brand + ')' : ''), p.aliUrl || ('/api/research/ali-go?q=' + encodeURIComponent(p.product))));
         row.appendChild(t);
+        row.appendChild(checkBox(p.product));
         out.appendChild(row);
       });
       return;
@@ -46,6 +92,7 @@
       out.appendChild(document.createElement('br'));
       out.appendChild(document.createTextNode(d.reason));
     }
+    out.appendChild(checkBox(d.product));
   }
 
   function addButton(card, id) {
