@@ -132,6 +132,7 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <div class="nh"><h1>Winner Finder</h1><button class="x" id="closeNav">&#10005; Close</button></div>
  <button data-p="dash" class="on">Dashboard</button>
  <button data-p="win">Winning Products</button>
+ <button data-p="vp">Viral Products</button>
  <button data-p="yt">YouTube Research</button>
  <button data-p="sup">Suppliers (AliExpress / CJ)</button>
  <button data-p="calc">Profit Calculator</button>
@@ -186,10 +187,17 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 
 <section class="page" id="yt">
  <h2>YouTube Research</h2>
- <div class="row"><button class="btn" id="ytGo">Viral Products (1M+ views)</button></div>
+ <div class="row"><button class="btn" id="ytGo">Trending Products (YouTube videos)</button></div>
  <div class="row"><input id="vq" placeholder="Video interest for one product"><button class="btn alt" id="vGo">Check</button></div>
  <div id="vOut" class="msg"></div>
  <div id="yOut" class="msg"></div>
+</section>
+
+<section class="page" id="vp">
+ <h2>Viral Products</h2>
+ <p style="margin:0 0 10px;color:var(--mute)">Products going viral on YouTube (videos with 1M+ views in the last 30 days), ranked by AI.</p>
+ <div class="row"><button class="btn" id="vpGo">Find viral products</button></div>
+ <div id="vpOut" class="msg"></div>
 </section>
 
 <section class="page" id="sup">
@@ -312,6 +320,7 @@ document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () =>
   $('#ttl').textContent = b.textContent; setNav(false);
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
+  if (b.dataset.p === 'vp') loadViral();
 });
 // open one page (also used by the Dashboard cards); the menu button stays highlighted on its own page
 function showPage(id, title) {
@@ -389,6 +398,31 @@ function videos(el, vids) {
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
     '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views' + (v.likes != null ? ' · ' + num(v.likes) + ' likes' : '') + (v.comments != null ? ' · ' + num(v.comments) + ' comments' : '') + ' · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
+// viral products: product name + views of its best YouTube video, ranked by AI
+const kfmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n || 0);
+let vpLoaded = false;
+async function loadViral(force) {
+  const el = $('#vpOut');
+  if (vpLoaded && !force) return;
+  el.className = 'msg'; el.textContent = 'Finding viral products… this can take up to a minute the first time.';
+  try {
+    const j = await api('/api/research/viral-products');
+    const list = j.products || [];
+    if (!list.length) { el.textContent = 'No viral products found right now.'; return; }
+    vpLoaded = true;
+    el.className = '';
+    el.innerHTML = list.map((p) =>
+      '<div class="card item">' + (p.video && p.video.thumb ? '<img src="' + esc(p.video.thumb) + '" alt="">' : '') +
+      '<div><b>' + p.rank + '. ' + esc(p.product) + '</b>' +
+      '<div class="meta"><b>YouTube video views:</b> ' + kfmt(p.views) + (p.videoCount > 1 ? ' · ' + p.videoCount + ' viral videos' : '') + '</div>' +
+      '<div class="meta">AI score ' + p.score + '/100 · ' + kfmt(p.viewsPerDay) + ' views per day · ' + kfmt(p.likes) + ' likes · ' + kfmt(p.comments) + ' comments</div>' +
+      (p.why ? '<div class="meta">' + esc(p.why) + '</div>' : '') +
+      '<div class="meta">' + (p.video ? '<a href="' + esc(p.video.url) + '" target="_blank" rel="noopener">Watch video</a> · ' : '') +
+      '<a href="/api/research/ali-go?q=' + encodeURIComponent(p.product) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' +
+      '</div></div>').join('');
+  } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
+}
+$('#vpGo').onclick = () => loadViral(true);
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
   try { const j = await api('/api/research/youtube-viral'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
