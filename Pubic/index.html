@@ -383,7 +383,6 @@ $('#q').onkeydown = (e) => { if (e.key === 'Enter') doSearch(); };
 
 // youtube
 function videos(el, vids) {
-  vids = (vids || []).filter(function (v) { return (Number(v.views) || 0) >= 1000000; });
   el.className = vids && vids.length ? '' : 'msg';
   el.innerHTML = vids && vids.length ? vids.map((v) =>
     '<div class="card item">' + (v.thumb ? '<img src="' + esc(v.thumb) + '" alt="">' : '') +
