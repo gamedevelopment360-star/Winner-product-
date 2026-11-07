@@ -110,6 +110,7 @@ async function geminiChat(key, prompt, thumb, videoId) {
         last = { ok: false, status: r.status, why: clean(j && j.error && j.error.message, 160) };
         if (r.status === 404) break;          // model name not found: next model
         if (r.status === 400) continue;       // video not readable: try the thumbnail
+        if (r.status >= 500) { last.why = 'Google AI is busy right now. Try again in a minute.'; break; } // overloaded: next model
         return last;                          // key problem or limit: stop
       } catch (e) { last = { ok: false, status: 502, why: clean(e && e.message, 100) }; }
     }
@@ -199,7 +200,7 @@ async function geminiText(key, prompt) {
         if (text) return text;
         continue;
       }
-      if (r.status !== 404 && r.status !== 400) return null;
+      if (r.status !== 404 && r.status !== 400 && r.status < 500) return null;
     } catch (e) { /* try next */ }
   }
   return null;
@@ -442,3 +443,8 @@ module.exports = function registerIdentify(app) {
     }
   });
 };
+
+// shared helpers for winner.js
+module.exports.geminiText = geminiText;
+module.exports.parseJson = parseJson;
+module.exports.clean = clean;
