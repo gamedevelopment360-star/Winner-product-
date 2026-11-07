@@ -411,14 +411,14 @@ async function loadViral(force) {
     if (!list.length) { el.textContent = 'No viral products found right now.'; return; }
     vpLoaded = true;
     el.className = '';
-    el.innerHTML = list.map((p) =>
+    el.innerHTML = (j.note ? '<div class="msg">' + esc(j.note) + '</div>' : '') + list.map((p) =>
       '<div class="card item">' + (p.video && p.video.thumb ? '<img src="' + esc(p.video.thumb) + '" alt="">' : '') +
       '<div><b>' + p.rank + '. ' + esc(p.product) + '</b>' +
       '<div class="meta"><b>YouTube video views:</b> ' + kfmt(p.views) + (p.videoCount > 1 ? ' · ' + p.videoCount + ' viral videos' : '') + '</div>' +
       '<div class="meta">AI score ' + p.score + '/100 · ' + kfmt(p.viewsPerDay) + ' views per day · ' + kfmt(p.likes) + ' likes · ' + kfmt(p.comments) + ' comments</div>' +
       (p.why ? '<div class="meta">' + esc(p.why) + '</div>' : '') +
       '<div class="meta">' + (p.video ? '<a href="' + esc(p.video.url) + '" target="_blank" rel="noopener">Watch video</a> · ' : '') +
-      '<a href="/api/research/ali-go?q=' + encodeURIComponent(p.product) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' +
+      '<a href="' + esc(p.aliUrl || ('/api/research/ali-go?q=' + encodeURIComponent(p.product))) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' +
       '</div></div>').join('');
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
 }
