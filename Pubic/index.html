@@ -488,7 +488,7 @@ async function loadViral(force) {
         '<div class="vpchips"><span class="vpchip">' + kfmt(p.viewsPerDay) + ' views/day</span><span class="vpchip">' + kfmt(p.likes) + ' likes</span><span class="vpchip">' + kfmt(p.comments) + ' comments</span></div>' +
         (p.why ? '<p class="vpwhy">' + esc(p.why) + '</p>' : '') +
         '<div class="vpacts">' + (p.video ? '<a class="watch" href="' + esc(p.video.url) + '" target="_blank" rel="noopener">Watch video</a>' : '') +
-        '<a class="ali" href="' + esc(ali) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' +
+        '</div>' +
         '</div></article>';
     }).join('') + '</div>';
   } catch (e) { el.innerHTML = '<p class="vperr">' + esc(e.message) + '</p>'; }
