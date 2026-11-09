@@ -376,7 +376,6 @@ document.querySelectorAll('nav button[data-p]').forEach((b) => b.onclick = () =>
   $('#ttl').textContent = b.textContent; setNav(false);
   if (b.dataset.p === 'dash') loadDash();
   if (b.dataset.p === 'sup') loadSup('');
-  if (b.dataset.p === 'vp') loadViral();
 });
 // open one page (also used by the Dashboard cards); the menu button stays highlighted on its own page
 function showPage(id, title) {
