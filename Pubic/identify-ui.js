@@ -75,7 +75,7 @@
 
   function scan() {
     var fresh = [];
-    var cards = document.querySelectorAll('.card.item, .card');
+    var cards = document.querySelectorAll('.card.item, .card, .vpcard');
     for (var i = 0; i < cards.length; i++) {
       var card = cards[i];
       if (card.dataset.idDone) continue;
@@ -88,7 +88,7 @@
       var has = false, bs = card.querySelectorAll('button');
       for (var j = 0; j < bs.length; j++) if (/identify/i.test(bs[j].textContent)) has = true;
       if (!has) addButton(card, m[1]);
-      fresh.push({ card: card, id: m[1] });
+      if (!card.classList.contains('vpcard')) fresh.push({ card: card, id: m[1] });
     }
     if (fresh.length) fixProductLines(fresh.slice(0, 60));
   }
