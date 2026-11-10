@@ -1,10 +1,10 @@
 // identify.js — finds the product in a YouTube video, even when the title does not name it.
-// It reads the video's title, tags, description and THUMBNAIL picture with Google Gemini (if GEMINI_API_KEY is set), otherwise a Groq vision model.
+// It reads the video's title, tags, description and THUMBNAIL picture with Google Gemini only.
 // It does not watch the video itself (YouTube does not allow downloading videos).
 //
 // Route: GET /api/research/identify?id=VIDEOID
-// Needs in Render: YOUTUBE_API_KEY (you have it) and GROQ_API_KEY.
-// Optional: GEMINI_API_KEY, GEMINI_MODEL, GROQ_VISION_MODEL (default below), IDENTIFY_DAILY_LIMIT (default 200 checks a day).
+// Needs in Render: YOUTUBE_API_KEY and GEMINI_API_KEY.
+// Optional: GEMINI_MODEL, IDENTIFY_DAILY_LIMIT (default 200 checks a day).
 
 let db = null;
 try { db = require('./db'); } catch (e) { db = null; }
@@ -26,46 +26,6 @@ function parseJson(text) {
   try { return JSON.parse(m[0]); } catch (e) { return null; }
 }
 
-
-let workingModel = null; // a model that worked once, so later checks go straight to it
-
-async function groqChat(groqKey, model, prompt, thumb) {
-  const gr = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + groqKey },
-    body: JSON.stringify({
-      model,
-      temperature: 0,
-      max_tokens: 900,
-      messages: [{ role: 'user', content: [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: thumb } },
-      ] }],
-    }),
-  });
-  const gj = await gr.json().catch(() => ({}));
-  return { ok: gr.ok, status: gr.status, json: gj };
-}
-
-// Asks Groq which models exist and returns the ones that look like picture-reading models.
-async function visionCandidates(groqKey) {
-  try {
-    const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: 'Bearer ' + groqKey } });
-    const j = await r.json().catch(() => ({}));
-    const ids = ((j && j.data) || []).filter((m) => m && m.id && m.active !== false).map((m) => String(m.id));
-    const score = (id) => {
-      const x = id.toLowerCase();
-      if (/whisper|guard|tts|orpheus|embed|prompt-guard|safeguard/.test(x)) return -1;
-      if (/qwen3\.[6-9]/.test(x)) return 6;
-      if (/scout/.test(x)) return 5;
-      if (/maverick/.test(x)) return 4;
-      if (/vision|-vl|vl-/.test(x)) return 3;
-      if (/llama-4/.test(x)) return 2;
-      return 0;
-    };
-    return ids.filter((id) => score(id) > 0).sort((a, b) => score(b) - score(a));
-  } catch (e) { return []; }
-}
 
 // Asks Google Gemini to WATCH the YouTube video (and read the text). If the video cannot be read
 // (private, too long, blocked), it falls back to the thumbnail picture. Tries a few model names.
@@ -181,34 +141,15 @@ async function resolveAli(name) {
 const vpMemory = new Map(); // video id -> { at, product }
 const vpDay = { day: '', n: 0 };
 
-// When Gemini says "limit reached", use Groq until the block time passes, then try Gemini again.
+// When Gemini says "limit reached", pause for a few minutes, then try Gemini again.
 let gemBlockedUntil = 0;
 const GEMINI_BLOCK_MS = 10 * 60 * 1000;
 function geminiReady() { return !!process.env.GEMINI_API_KEY && Date.now() >= gemBlockedUntil; }
 
-async function groqText(prompt) {
-  const key = process.env.GROQ_API_KEY;
-  if (!key) return null;
-  const model = process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b';
-  try {
-    const body = { model, temperature: 0, max_tokens: 6000, response_format: { type: 'json_object' },
-      messages: [{ role: 'system', content: 'You reply with JSON only.' }, { role: 'user', content: prompt }] };
-    if (/gpt-oss/.test(model)) body.reasoning_effort = 'low';
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key }, body: JSON.stringify(body),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) { console.error('Groq text failed:', r.status, clean(j && j.error && j.error.message, 120)); return null; }
-    return (j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || null;
-  } catch (e) { return null; }
-}
-
-// Text AI: Gemini while it is available, otherwise (or if it fails) Groq.
+// Text AI: Gemini only.
 async function aiText(prompt) {
-  let text = null;
-  if (geminiReady()) text = await geminiText(process.env.GEMINI_API_KEY, prompt);
-  if (!text) text = await groqText(prompt);
-  return text;
+  if (!geminiReady()) return null;
+  return await geminiText(process.env.GEMINI_API_KEY, prompt);
 }
 
 async function geminiText(key, prompt) {
@@ -254,7 +195,7 @@ function registerVideoProducts(app) {
       }
       const gemKey = process.env.GEMINI_API_KEY;
       const ytKey = process.env.YOUTUBE_API_KEY;
-      if (need.length && (gemKey || process.env.GROQ_API_KEY) && ytKey) {
+      if (need.length && gemKey && ytKey) {
         const day = new Date().toISOString().slice(0, 10);
         if (vpDay.day !== day) { vpDay.day = day; vpDay.n = 0; }
         if (vpDay.n < 100) {
@@ -322,10 +263,9 @@ module.exports = function registerIdentify(app) {
       if (!/^[A-Za-z0-9_-]{11}$/.test(id)) return res.status(400).json({ error: 'Bad video id.' });
 
       const ytKey = process.env.YOUTUBE_API_KEY;
-      const groqKey = process.env.GROQ_API_KEY;
       if (!ytKey) return res.status(503).json({ error: 'YOUTUBE_API_KEY is not set on the server.' });
       const gemKey = process.env.GEMINI_API_KEY;
-      if (!groqKey && !gemKey) return res.status(503).json({ error: 'Neither GEMINI_API_KEY nor GROQ_API_KEY is set on the server.' });
+      if (!gemKey) return res.status(503).json({ error: 'GEMINI_API_KEY is not set on the server.' });
 
       // already identified before? (kept 30 days, so each video costs only one check)
       const hit = memory.get(id);
@@ -362,8 +302,7 @@ module.exports = function registerIdentify(app) {
       const thumb = ((th.maxres || th.standard || th.high || th.medium || th.default) || {}).url;
       if (!thumb) return res.status(404).json({ error: 'This video has no picture.' });
 
-      // 2) ask the Groq vision model
-      const model = process.env.GROQ_VISION_MODEL || workingModel || 'qwen/qwen3.8-27b';
+      // 2) ask Gemini
       const prompt =
         'You help people find products to sell online. Look at the video (or the thumbnail picture) and the video text below. ' +
         'Identify the physical products shown or promoted. If the video shows ONE product, list one. ' +
@@ -382,44 +321,15 @@ module.exports = function registerIdentify(app) {
         'Tags: ' + clean((sn.tags || []).slice(0, 20).join(', '), 300) + '\n' +
         'Description: ' + clean(sn.description, 800);
 
-      let text = null;
-      if (gemKey && geminiReady()) {
-        const g = await geminiChat(gemKey, prompt, thumb, id);
-        if (!g.ok && g.status === 429) gemBlockedUntil = Date.now() + GEMINI_BLOCK_MS;
-        if (g.ok) text = g.text;
-        else {
-          console.error('Gemini identify failed:', g.status, g.why);
-          if (!groqKey) {
-            if (g.status === 401 || g.status === 403) return res.status(502).json({ error: 'Google did not accept the key. Check GEMINI_API_KEY in Render.' });
-            if (g.status === 429) return res.status(429).json({ error: 'Gemini free limit reached. Try again later.' });
-            return res.status(502).json({ error: 'Gemini said: ' + (g.why || ('error ' + g.status)) });
-          }
-        }
+      if (!geminiReady()) return res.status(429).json({ error: 'Gemini free limit reached. Try again in a few minutes.' });
+      const g = await geminiChat(gemKey, prompt, thumb, id);
+      if (!g.ok) {
+        console.error('Gemini identify failed:', g.status, g.why);
+        if (g.status === 429) { gemBlockedUntil = Date.now() + GEMINI_BLOCK_MS; return res.status(429).json({ error: 'Gemini free limit reached. Try again later.' }); }
+        if (g.status === 401 || g.status === 403) return res.status(502).json({ error: 'Google did not accept the key. Check GEMINI_API_KEY in Render.' });
+        return res.status(502).json({ error: 'Gemini said: ' + (g.why || ('error ' + g.status)) });
       }
-      if (text == null) {
-        let result = await groqChat(groqKey, model, prompt, thumb);
-        if (!result.ok && (result.status === 400 || result.status === 404)) {
-          // the default model name may be old: ask Groq what is available and try those
-          const tried = new Set([model]);
-          const cands = (await visionCandidates(groqKey)).filter((id) => !tried.has(id)).slice(0, 4);
-          for (const id of cands) {
-            const r2 = await groqChat(groqKey, id, prompt, thumb);
-            if (r2.ok) { result = r2; workingModel = id; break; }
-          }
-        } else if (result.ok) {
-          workingModel = model;
-        }
-        const gr = { ok: result.ok, status: result.status };
-        const gj = result.json;
-        if (!gr.ok) {
-          const why = clean(gj && gj.error && gj.error.message, 160);
-          console.error('Groq identify failed:', gr.status, why);
-          if (gr.status === 401 || gr.status === 403) return res.status(502).json({ error: 'Groq did not accept the key. Check GROQ_API_KEY in Render.' });
-          if (gr.status === 429) return res.status(429).json({ error: 'Groq is busy. Try again in a minute.' });
-          return res.status(502).json({ error: 'Groq said: ' + (why || ('error ' + gr.status)) });
-        }
-        text = gj.choices && gj.choices[0] && gj.choices[0].message && gj.choices[0].message.content;
-      }
+      const text = g.text;
       const out = parseJson(text);
       if (!out) return res.status(502).json({ error: 'Could not read the answer. Try again.' });
 
@@ -481,3 +391,4 @@ module.exports = function registerIdentify(app) {
 module.exports.geminiText = geminiText;
 module.exports.parseJson = parseJson;
 module.exports.clean = clean;
+module.exports.resolveAli = resolveAli;
