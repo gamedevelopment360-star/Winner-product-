@@ -106,58 +106,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 .backbtn{display:inline-flex;align-items:center;margin:0 0 14px;padding:8px 14px;background:#232834;color:var(--text);border:1px solid var(--line);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
 .backbtn:hover{border-color:#3a4150}
 @media(prefers-reduced-motion:reduce){.page .item{transition:none}}
-/* ===== Viral Products page ===== */
-#vp .vphead{display:flex;flex-direction:column;gap:12px;margin-bottom:16px}
-#vp .vphead h2{margin:0}
-#vp .vpsub{margin:4px 0 0;color:var(--mute);font-size:14px;line-height:1.5}
-#vp .vpbtn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:46px;padding:12px 18px;border-radius:12px;
- background:linear-gradient(135deg,#34d97b,#1fae5c);box-shadow:0 4px 14px rgba(46,204,113,.28);font-size:15px;font-weight:700;transition:transform .12s,filter .15s}
-#vp .vpbtn:hover{filter:brightness(1.08)}
-#vp .vpbtn:active{transform:scale(.98)}
-#vp .vpbtn:disabled{opacity:.7;cursor:progress}
-#vp .vpbtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-.vpspin{width:46px;height:46px;border-radius:50%;border:4px solid #2a2f3a;border-top-color:var(--accent);animation:vpturn .9s linear infinite}
-.vpspin.sm{width:18px;height:18px;border-width:2.5px;border-color:rgba(6,33,15,.25);border-top-color:#06210f}
-@keyframes vpturn{to{transform:rotate(360deg)}}
-.vpload{display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px 10px 10px;text-align:center}
-.vpload p{margin:0;font-weight:600}
-.vpload small{color:var(--mute)}
-.vpgrid{display:grid;grid-template-columns:1fr;gap:14px}
-.vpcard{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;animation:vpin .25s ease-out}
-@keyframes vpin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.vpthumb{position:relative;aspect-ratio:16/9;background:#1e222b;overflow:hidden}
-.vpthumb img{width:100%;height:100%;object-fit:cover;display:block}
-.vprank{position:absolute;top:10px;left:10px;min-width:34px;height:34px;padding:0 10px;border-radius:17px;background:rgba(15,17,21,.85);border:1px solid var(--line);
- display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;backdrop-filter:blur(4px)}
-.vprank.top{background:#f1c40f;color:#2a2100;border-color:#f1c40f}
-.vpviews{position:absolute;right:10px;bottom:10px;padding:4px 10px;border-radius:999px;background:rgba(15,17,21,.85);font-weight:700;font-size:13px}
-.vpbody{display:flex;flex-direction:column;gap:10px;padding:14px}
-.vptop{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.vpname{margin:0;font-size:18px;font-weight:700;line-height:1.25;text-transform:capitalize;overflow-wrap:anywhere}
-.vpviewline{margin:2px 0 0;color:var(--mute);font-size:13px}
-.vpviewline b{color:var(--text)}
-.vpscore{--c:#2ecc71;flex:none;width:56px;height:56px;border-radius:50%;display:grid;place-items:center;
- background:conic-gradient(var(--c) calc(var(--p)*1%),#2a2f3a 0)}
-.vpscore.mid{--c:#f1c40f}.vpscore.low{--c:#ff7b7b}
-.vpscore span{width:44px;height:44px;border-radius:50%;background:var(--panel);display:grid;place-items:center;font-weight:800;font-size:15px}
-.vpchips{display:flex;flex-wrap:wrap;gap:6px}
-.vpchip{padding:4px 10px;border-radius:999px;background:#232834;color:var(--text);font-size:12px;font-weight:600}
-.vpwhy{margin:0;color:var(--mute);font-size:14px;line-height:1.45}
-.vpacts{display:grid;grid-template-columns:1fr;gap:8px;margin-top:2px}
-.vpacts a{display:flex;align-items:center;justify-content:center;min-height:44px;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;transition:filter .15s,transform .12s}
-.vpacts a:active{transform:scale(.98)}
-.vpacts a.watch{background:#232834;color:var(--link);border:1px solid var(--line)}
-.vpacts a.ali{background:#ff6a2b;color:#fff}
-.vpacts a:hover{filter:brightness(1.1)}
-.vpskel{height:300px;border-radius:16px;border:1px solid var(--line);background:linear-gradient(100deg,#181b22 30%,#20242d 50%,#181b22 70%);background-size:200% 100%;animation:vpshine 1.3s linear infinite}
-@keyframes vpshine{to{background-position:-200% 0}}
-.vpnote{margin:0 0 12px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#12151b;color:var(--mute);font-size:13px}
-.vperr{margin:0;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,92,92,.4);background:rgba(255,92,92,.07);color:#ff8a8a}
-@media(min-width:600px){#vp .vphead{flex-direction:row;align-items:center;justify-content:space-between}#vp .vpbtn{width:auto;min-width:210px}.vpacts{grid-template-columns:1fr 1fr}}
-@media(min-width:760px){.vpgrid{grid-template-columns:repeat(2,1fr)}}
-@media(min-width:1100px){.vpgrid{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:360px){.vpname{font-size:16px}.vpscore{width:50px;height:50px}.vpscore span{width:39px;height:39px;font-size:14px}}
-@media(prefers-reduced-motion:reduce){.vpspin,.vpskel,.vpcard{animation:none}.vpspin{border-top-color:var(--accent)}}
 </style>
 <link rel="stylesheet" href="/identify-style.css">
 </head>
@@ -184,7 +132,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <div class="nh"><h1>Winner Finder</h1><button class="x" id="closeNav">&#10005; Close</button></div>
  <button data-p="dash" class="on">Dashboard</button>
  <button data-p="win">Winning Products</button>
- <button data-p="vp">Viral Products</button>
  <button data-p="yt">YouTube Research</button>
  <button data-p="sup">Suppliers (AliExpress / CJ)</button>
  <button data-p="calc">Profit Calculator</button>
@@ -243,17 +190,6 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
  <div class="row"><input id="vq" placeholder="Video interest for one product"><button class="btn alt" id="vGo">Check</button></div>
  <div id="vOut" class="msg"></div>
  <div id="yOut" class="msg"></div>
-</section>
-
-<section class="page" id="vp">
- <div class="vphead">
-  <div>
-   <h2>Viral Products</h2>
-   <p class="vpsub">Products going viral on YouTube (USA and Chinese videos with 1M+ views in the last 30 days), ranked by AI.</p>
-  </div>
-  <button class="btn vpbtn" id="vpGo" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg><span>Find viral products</span></button>
- </div>
- <div id="vpOut"></div>
 </section>
 
 <section class="page" id="sup">
@@ -453,47 +389,6 @@ function videos(el, vids) {
     '<div><a href="' + esc(v.url) + '" target="_blank" rel="noopener">' + esc(v.title) + '</a>' +
     '<div class="meta">' + esc(v.channel) + '</div>' + (v.product ? '<div class="meta"><b>Product:</b> ' + esc(v.product) + ' · <a href="https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(v.product.split(',')[0]) + '" target="_blank" rel="noopener">Find on AliExpress</a></div>' : '') + '<div class="meta">' + num(v.views) + ' views' + (v.likes != null ? ' · ' + num(v.likes) + ' likes' : '') + (v.comments != null ? ' · ' + num(v.comments) + ' comments' : '') + ' · about ' + num(v.viewsPerDay) + ' per day · ' + esc((v.publishedAt || '').slice(0, 10)) + '</div></div></div>').join('') : 'No videos found.';
 }
-// viral products: product name + views of its best YouTube video, ranked by AI
-const kfmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n || 0);
-const VP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>';
-let vpLoaded = false;
-function vpBusy(on) {
-  const b = $('#vpGo');
-  b.disabled = on;
-  b.innerHTML = (on ? '<span class="vpspin sm"></span>' : VP_ICON) + '<span>' + (on ? 'Finding…' : 'Find viral products') + '</span>';
-}
-async function loadViral(force) {
-  const el = $('#vpOut');
-  if (vpLoaded && !force) return;
-  vpBusy(true);
-  el.innerHTML = '<div class="vpload" role="status" aria-live="polite"><div class="vpspin"></div><p>Finding viral products…</p><small>The first search can take a minute or two.</small></div>' +
-    '<div class="vpgrid" style="margin-top:18px"><div class="vpskel"></div><div class="vpskel"></div><div class="vpskel"></div></div>';
-  try {
-    const j = await api('/api/research/viral-products');
-    const list = j.products || [];
-    if (!list.length) { el.innerHTML = '<p class="vpnote">No viral products found right now. Try again later.</p>'; return; }
-    vpLoaded = true;
-    el.innerHTML = (j.note ? '<p class="vpnote">' + esc(j.note) + '</p>' : '') + '<div class="vpgrid">' + list.map((p) => {
-      const tone = p.score >= 70 ? '' : p.score >= 50 ? ' mid' : ' low';
-      const ali = p.aliUrl || ('/api/research/ali-go?q=' + encodeURIComponent(p.product));
-      return '<article class="vpcard">' +
-        '<div class="vpthumb">' + (p.video && p.video.thumb ? '<img src="' + esc(p.video.thumb) + '" alt="" loading="lazy">' : '') +
-        '<span class="vprank' + (p.rank === 1 ? ' top' : '') + '">#' + p.rank + '</span>' +
-        '<span class="vpviews">' + kfmt(p.views) + ' views</span></div>' +
-        '<div class="vpbody">' +
-        '<div class="vptop"><div><h3 class="vpname">' + esc(p.product) + '</h3>' +
-        '<p class="vpviewline"><b>YouTube video views:</b> ' + kfmt(p.views) + (p.videoCount > 1 ? ' · ' + p.videoCount + ' viral videos' : '') + '</p></div>' +
-        '<div class="vpscore' + tone + '" style="--p:' + p.score + '" title="AI score"><span>' + p.score + '</span></div></div>' +
-        '<div class="vpchips"><span class="vpchip">' + kfmt(p.viewsPerDay) + ' views/day</span><span class="vpchip">' + kfmt(p.likes) + ' likes</span><span class="vpchip">' + kfmt(p.comments) + ' comments</span></div>' +
-        (p.why ? '<p class="vpwhy">' + esc(p.why) + '</p>' : '') +
-        '<div class="vpacts">' + (p.video ? '<a class="watch" href="' + esc(p.video.url) + '" target="_blank" rel="noopener">Watch video</a>' : '') +
-        '</div>' +
-        '</div></article>';
-    }).join('') + '</div>';
-  } catch (e) { el.innerHTML = '<p class="vperr">' + esc(e.message) + '</p>'; }
-  finally { vpBusy(false); }
-}
-$('#vpGo').onclick = () => loadViral(true);
 $('#ytGo').onclick = async () => {
   const el = $('#yOut'); el.className = 'msg'; el.textContent = 'Loading…';
   try { const j = await api('/api/research/youtube-viral'); videos(el, j.videos); try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {} $('#sVideos').textContent = num((j.videos || []).length); } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
