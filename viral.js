@@ -8,17 +8,30 @@ const cache = {};   // video list per region: { us: {at, data}, cn: {at, data} }
 const pcache = {};  // ranked products per region
 const SIX_HOURS = 6 * 3600 * 1000;
 const REGIONS = {
-  us: { lang: 'en', country: 'US', queries: ['viral gadget you need', 'tiktok made me buy it', 'amazon must haves gadgets', 'this product is insane', 'viral kitchen gadget', 'viral cleaning gadget'] },
+  us: { lang: 'en', country: 'US', channelCountries: ['US'], queries: ['viral gadget you need', 'tiktok made me buy it', 'amazon must haves gadgets', 'this product is insane', 'viral kitchen gadget', 'viral cleaning gadget'] },
   // Chinese-language videos on YouTube (YouTube is blocked inside mainland China, so this is Chinese-language content watched elsewhere)
-  cn: { lang: 'zh', country: 'TW', queries: ['爆款好物', '抖音爆款 神器', '厨房神器 好物', '家居好物 推荐', '黑科技 神器', '清洁神器 爆款'] },
+  cn: { lang: 'zh', country: 'TW', channelCountries: ['CN', 'TW', 'HK', 'MO', 'SG', 'MY'], queries: ['爆款好物', '抖音爆款 神器', '厨房神器 好物', '家居好物 推荐', '黑科技 神器', '清洁神器 爆款'] },
 };
-function pickRegion(v) { return v === 'cn' ? 'cn' : 'us'; }
+function pickRegion(v) { return v === 'cn' ? 'cn' : v === 'us' ? 'us' : 'all'; } // default 'all' = USA and Chinese videos together
 
 function clean(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
 function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, n)); }
 
+// USA and Chinese videos together: the 15 fastest-growing from each, then sorted together.
 async function loadVideos(region) {
   region = pickRegion(region);
+  if (region !== 'all') return loadRegion(region);
+  const c = cache.all;
+  if (c && c.data && Date.now() - c.at < SIX_HOURS) return c.data;
+  const us = await loadRegion('us');
+  const cn = await loadRegion('cn');
+  const videos = us.videos.slice(0, 15).concat(cn.videos.slice(0, 15)).sort((a, b) => b.viewsPerDay - a.viewsPerDay);
+  const data = { videos, minViews: us.minViews };
+  cache.all = { at: Date.now(), data };
+  return data;
+}
+
+async function loadRegion(region) {
   const R = REGIONS[region];
   const c = cache[region];
   if (c && c.data && Date.now() - c.at < SIX_HOURS) return c.data;
@@ -55,7 +68,7 @@ async function loadVideos(region) {
       const ageDays = Math.max(1, (now - Date.parse(sn.publishedAt || now)) / 86400000);
       const th = sn.thumbnails || {};
       all.push({
-        id: v.id, title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
+        id: v.id, channelId: sn.channelId || '', title: sn.title || '', channel: sn.channelTitle || '', publishedAt: sn.publishedAt || null,
         views, likes, comments, viewsPerDay: Math.round(views / ageDays),
         thumb: (th.medium && th.medium.url) || (th.default && th.default.url) || '',
         url: 'https://www.youtube.com/watch?v=' + v.id,
@@ -63,7 +76,20 @@ async function loadVideos(region) {
       });
     }
   }
-  const videos = all.sort((a, b) => b.viewsPerDay - a.viewsPerDay).slice(0, 30);
+  // Keep only videos from channels in the right country (YouTube's region setting alone still lets other countries in).
+  const chIds = [...new Set(all.map((v) => v.channelId).filter(Boolean))];
+  const countryOf = {};
+  for (let i = 0; i < chIds.length; i += 50) {
+    const cj = await (await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&id=' + chIds.slice(i, i + 50).join(','), { headers: H })).json();
+    if (cj.error) throw Object.assign(new Error('YouTube said: ' + (cj.error.message || 'error')), { status: 502 });
+    for (const c of cj.items || []) countryOf[c.id] = (c.snippet && c.snippet.country) || '';
+  }
+  const right = all.filter((v) => {
+    const c = countryOf[v.channelId] || '';
+    if (R.channelCountries.includes(c)) return true;
+    return region === 'cn' && !c && /[\u4e00-\u9fff]/.test(v.title); // Chinese title, channel hides its country
+  });
+  const videos = right.sort((a, b) => b.viewsPerDay - a.viewsPerDay).slice(0, 30);
   const data = { videos, minViews };
   cache[region] = { at: Date.now(), data };
   return data;
