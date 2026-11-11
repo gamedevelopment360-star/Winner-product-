@@ -97,28 +97,66 @@ async function aliTopLink(name) {
     const j = await r.json().catch(() => null);
     if (!r.ok || !j) return { url: null, status: 'error', why: 'RapidAPI ' + r.status + (j && j.message ? ': ' + clean(j.message, 100) : '') };
     const list = (j.result && j.result.resultList) || [];
-    const words = String(name).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3);
-    for (const block of list) {
+    const stop = new Set(['the', 'and', 'for', 'with', 'new', 'mini', 'portable', 'smart']);
+    const words = String(name).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !stop.has(w)).map((w) => (w.length > 4 && w.endsWith('s') ? w.slice(0, -1) : w));
+    let best = null, bestScore = 0;
+    for (const block of list.slice(0, 20)) {
       const x = block.item || block;
       const itemId = x.itemId || x.productId || x.id;
       if (!itemId) continue;
       const title = String(x.title || x.productTitle || '').toLowerCase();
-      if (words.length && !words.some((w) => title.includes(w))) continue; // must look like the product
-      return { url: 'https://www.aliexpress.com/item/' + itemId + '.html', status: 'ok' };
+      const hits = words.filter((w) => title.includes(w)).length;
+      const score = words.length ? hits / words.length : 0;
+      if (score > bestScore) { bestScore = score; best = itemId; }
     }
+    // the title must contain ALL the words of a short name, or at least 60% of a longer name
+    const need = words.length <= 2 ? 1 : 0.6;
+    if (best && bestScore >= need) return { url: 'https://www.aliexpress.com/item/' + best + '.html', status: 'ok' };
     return { url: null, status: 'none' };
   } catch (e) { return { url: null, status: 'error', why: 'network problem' }; }
+}
+
+// Image search: looks for the same product by the video's picture (RapidAPI item_search_image).
+// Only used as the FIRST try; if it finds nothing close, the normal name search below still runs.
+async function aliImageLink(videoId, name) {
+  const apiKey = process.env.RAPIDAPI_KEY;
+  if (!apiKey) return { url: null, status: 'nokey' };
+  try {
+    const img = 'https://i.ytimg.com/vi/' + videoId + '/hqdefault.jpg';
+    const r = await fetch('https://aliexpress-datahub.p.rapidapi.com/item_search_image?imgUrl=' + encodeURIComponent(img) + '&page=1', {
+      headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': 'aliexpress-datahub.p.rapidapi.com' },
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j) { console.log('AliExpress image search: HTTP ' + r.status); return { url: null, status: 'error' }; }
+    const list = (j.result && j.result.resultList) || [];
+    const stop = new Set(['the', 'and', 'for', 'with', 'new', 'mini', 'portable', 'smart']);
+    const words = String(name).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 3 && !stop.has(w));
+    let best = null, bestScore = 0;
+    for (const block of list.slice(0, 10)) {
+      const x = block.item || block;
+      const itemId = x.itemId || x.productId || x.id;
+      if (!itemId) continue;
+      const title = String(x.title || x.productTitle || '').toLowerCase();
+      const hits = words.filter((w) => title.includes(w)).length;
+      const score = words.length ? hits / words.length : 0;
+      if (score > bestScore) { bestScore = score; best = itemId; }
+    }
+    // a picture match must still share at least half of the product words in its title
+    if (best && bestScore >= 0.5) return { url: 'https://www.aliexpress.com/item/' + best + '.html', status: 'ok' };
+    console.log('AliExpress image search: no close match for "' + name + '" (' + list.length + ' results)');
+    return { url: null, status: 'none' };
+  } catch (e) { return { url: null, status: 'error' }; }
 }
 
 // Cached + rate-limited lookup (one AliExpress call per second, each product saved for 30 days).
 const goMemory = new Map(); // name -> { at, url }
 const goDay = { day: '', n: 0 };
 let goQueue = Promise.resolve();
-async function resolveAli(name) {
-  const k = String(name).toLowerCase();
+async function resolveAli(name, videoId) {
+  const k = String(name).toLowerCase() + (videoId ? '|' + videoId : '');
   let hit = goMemory.get(k);
   if (!hit && db && db.cacheGet) {
-    const saved = await Promise.resolve(db.cacheGet('aligo1:' + k)).catch(() => null);
+    const saved = await Promise.resolve(db.cacheGet('aligo2:' + k)).catch(() => null);
     if (saved && saved.data && saved.data.url) { hit = { at: saved.at || Date.now(), url: saved.data.url }; goMemory.set(k, hit); }
   }
   if (hit && Date.now() - hit.at < TTL) return { url: hit.url, status: 'ok' };
@@ -127,7 +165,9 @@ async function resolveAli(name) {
     if (goDay.day !== day) { goDay.day = day; goDay.n = 0; }
     if (goDay.n >= (parseInt(process.env.ALI_GO_DAILY_LIMIT, 10) || 300)) return { url: null, status: 'error' };
     goDay.n++;
-    const res = await aliTopLink(name);
+    let res = null;
+    if (videoId) { res = await aliImageLink(videoId, name); if (res.status !== 'ok') await idSleep(1100); }
+    if (!res || res.status !== 'ok') res = await aliTopLink(name);
     await idSleep(1100);
     return res;
   });
@@ -136,7 +176,7 @@ async function resolveAli(name) {
   if (res.status === 'ok') {
     const at = Date.now();
     goMemory.set(k, { at, url: res.url });
-    if (db && db.cacheSet) Promise.resolve(db.cacheSet('aligo1:' + k, { at, data: { url: res.url } })).catch(() => {});
+    if (db && db.cacheSet) Promise.resolve(db.cacheSet('aligo2:' + k, { at, data: { url: res.url } })).catch(() => {});
   }
   return res;
 }
@@ -249,10 +289,11 @@ function registerVideoProducts(app) {
 function registerAliGo(app) {
   app.get('/api/research/ali-go', async (req, res) => {
     const q = clean(req.query.q, 80);
+    const vid = /^[A-Za-z0-9_-]{11}$/.test(String(req.query.v || '')) ? String(req.query.v) : '';
     const search = 'https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(q);
     if (!q) return res.redirect(302, 'https://www.aliexpress.com/');
     try {
-      const r = await resolveAli(q);
+      const r = await resolveAli(q, vid);
       return res.redirect(302, r.url || search);
     } catch (e) { return res.redirect(302, search); }
   });
@@ -359,7 +400,7 @@ module.exports = function registerIdentify(app) {
       let aliNote = '';
       for (let i = products.length - 1; i >= 0; i--) products[i].aliUrl = '';
       for (let i = 0; i < products.length; i++) {
-        const r = await resolveAli(products[i].product);
+        const r = await resolveAli(products[i].product, id);
         if (r.status === 'ok') products[i].aliUrl = r.url;
         else if (r.status === 'none') products[i].drop = true;
         else {
