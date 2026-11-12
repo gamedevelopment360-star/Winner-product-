@@ -3,16 +3,60 @@
 //  GET /api/research/viral-products   the products going viral: the AI names the product in each video, groups them,
 //                                     and ranks them by speed of growth, likes, comments and how sellable the product is.
 // Every candidate video is WATCHED by Gemini first; videos that are not about a dropshipping product are removed, and the product name is attached to the ones kept.
-// Uses YOUTUBE_API_KEY, GEMINI_API_KEY and GROQ_API_KEY. Gemini first; when its free limit is reached, Groq takes over for 10 minutes, then Gemini is tried again. Results are kept for 6 hours.
+// Uses YOUTUBE_API_KEY, GEMINI_API_KEY and GROQ_API_KEY. Gemini first; when its free limit is reached, Groq takes over for 10 minutes, then Gemini is tried again. Each tap searches a different set of product-focused phrases (they rotate through a big list), shows videos you have not seen first, and keeps one video per product. YouTube searches are remembered for 12 hours to save the daily YouTube limit.
 
 const cache = {};   // video list per region: { us: {at, data}, cn: {at, data} }
 const pcache = {};  // ranked products per region
 const SIX_HOURS = 6 * 3600 * 1000;
+const LIST_TTL = 15 * 1000;                 // the video list is rebuilt on every tap (15 s only stops double taps)
+const SEARCH_TTL = (parseInt(process.env.SEARCH_CACHE_HOURS, 10) || 12) * 3600 * 1000; // one YouTube search costs 100 of the 10,000 daily units
+const scache = {};   // YouTube search results per phrase: { 'us|phrase': {at, ids} }
+const decks = {};    // phrases not used yet in this round, per region
+const shown = {};    // video ids already shown, per region
 const REGIONS = {
-  us: { lang: 'en', country: 'US', channelCountries: ['US'], queries: ['viral gadget you need', 'tiktok made me buy it', 'amazon must haves gadgets', 'this product is insane', 'viral kitchen gadget', 'viral cleaning gadget'] },
+  us: { lang: 'en', country: 'US', channelCountries: ['US'], pool: [
+    // general
+    'tiktok made me buy it', 'amazon must haves gadgets', 'this product is insane', 'cool gadgets under $20', 'aliexpress gadgets worth buying', 'weird gadgets that actually work', 'viral gadget you need',
+    // kitchen
+    'viral kitchen gadget', 'kitchen gadgets that save time', 'cooking gadgets tiktok made me buy',
+    // cleaning and home
+    'viral cleaning gadget', 'cleaning products that actually work', 'home organization gadgets', 'bathroom gadgets you need', 'smart home gadgets cheap',
+    // pets
+    'pet gadgets dogs love', 'cat products you need',
+    // car
+    'car gadgets accessories you need', 'car cleaning gadget',
+    // beauty
+    'beauty tools tiktok viral', 'skincare gadget viral', 'hair tools viral',
+    // fitness
+    'fitness gadgets home workout', 'massage gadget viral',
+    // kids and baby
+    'baby products you need', 'kids toys viral',
+    // outdoor, travel, tech
+    'camping gadgets', 'travel gadgets must have', 'desk setup gadgets', 'phone accessories gadgets', 'led lights room gadgets',
+  ] },
   // Chinese-language videos on YouTube (YouTube is blocked inside mainland China, so this is Chinese-language content watched elsewhere)
-  cn: { lang: 'zh', country: 'TW', channelCountries: ['CN', 'TW', 'HK', 'MO', 'SG', 'MY'], queries: ['爆款好物', '抖音爆款 神器', '厨房神器 好物', '家居好物 推荐', '黑科技 神器', '清洁神器 爆款'] },
+  cn: { lang: 'zh', country: 'TW', channelCountries: ['CN', 'TW', 'HK', 'MO', 'SG', 'MY'], pool: [
+    '爆款好物', '抖音爆款 神器', '厨房神器 好物', '家居好物 推荐', '黑科技 神器', '清洁神器 爆款',
+    '宠物用品 好物', '车载好物 神器', '美妆工具 爆款', '健身神器 居家', '收纳神器 家居', '母婴好物 推荐',
+    '露营装备 好物', '旅行好物 神器', '学生党 好物', '办公室好物', '小家电 推荐', '浴室好物', '平价好物 分享', '淘宝好物 开箱',
+  ] },
 };
+
+// Takes the next phrases from a shuffled list; every phrase is used once before any repeats, so each tap searches something new.
+function nextQueries(region, n) {
+  const pool = REGIONS[region].pool;
+  const out = [];
+  while (out.length < Math.min(n, pool.length)) {
+    if (!decks[region] || !decks[region].length) {
+      const d = pool.slice();
+      for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; }
+      decks[region] = d;
+    }
+    const q = decks[region].pop();
+    if (!out.includes(q)) out.push(q);
+  }
+  return out;
+}
 function pickRegion(v) { return v === 'cn' ? 'cn' : v === 'us' ? 'us' : 'all'; } // default 'all' = USA and Chinese videos together
 
 function clean(v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); }
@@ -23,12 +67,12 @@ async function loadVideos(region) {
   region = pickRegion(region);
   if (region !== 'all') return loadRegion(region);
   const c = cache.all;
-  if (c && c.data && Date.now() - c.at < (c.ttl || SIX_HOURS)) return c.data;
+  if (c && c.data && Date.now() - c.at < (c.ttl || LIST_TTL)) return c.data;
   const us = await loadRegion('us');
   const cn = await loadRegion('cn');
   const videos = us.videos.slice(0, 15).concat(cn.videos.slice(0, 15)).sort((a, b) => b.viewsPerDay - a.viewsPerDay);
   const data = { videos, minViews: us.minViews, note: us.note || cn.note || '' };
-  const ttl = Math.min((cache.us && cache.us.ttl) || SIX_HOURS, (cache.cn && cache.cn.ttl) || SIX_HOURS);
+  const ttl = Math.min((cache.us && cache.us.ttl) || LIST_TTL, (cache.cn && cache.cn.ttl) || LIST_TTL);
   cache.all = { at: Date.now(), data, ttl };
   return data;
 }
@@ -36,7 +80,7 @@ async function loadVideos(region) {
 async function loadRegion(region) {
   const R = REGIONS[region];
   const c = cache[region];
-  if (c && c.data && Date.now() - c.at < (c.ttl || SIX_HOURS)) return c.data;
+  if (c && c.data && Date.now() - c.at < (c.ttl || LIST_TTL)) return c.data;
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) throw Object.assign(new Error('YOUTUBE_API_KEY is not set on the server.'), { status: 503 });
   const minViews = parseInt(process.env.MIN_VIDEO_VIEWS, 10) || 1000000;
@@ -44,7 +88,9 @@ async function loadRegion(region) {
   const H = { 'x-goog-api-key': key };
   const since = new Date(Date.now() - days * 86400000).toISOString();
   const ids = [];
-  for (const q of R.queries) {
+  for (const q of nextQueries(region, parseInt(process.env.QUERIES_PER_LOAD, 10) || 6)) {
+    const ck = region + '|' + q, hit = scache[ck];
+    if (hit && Date.now() - hit.at < SEARCH_TTL) { for (const id of hit.ids) if (!ids.includes(id)) ids.push(id); continue; }
     const sUrl = 'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=50&order=viewCount&relevanceLanguage=' + R.lang + '&regionCode=' + R.country + '&publishedAfter='
       + encodeURIComponent(since) + '&q=' + encodeURIComponent(q);
     const sj = await (await fetch(sUrl, { headers: H })).json();
@@ -52,7 +98,10 @@ async function loadRegion(region) {
       const why = (sj.error.errors && sj.error.errors[0] && sj.error.errors[0].reason) || sj.error.status || '';
       throw Object.assign(new Error(why === 'quotaExceeded' ? 'YouTube daily limit reached. Try again tomorrow.' : 'YouTube said: ' + (sj.error.message || why || 'error')), { status: 502 });
     }
-    for (const i of sj.items || []) { const id = i.id && i.id.videoId; if (id && !ids.includes(id)) ids.push(id); }
+    const got = [];
+    for (const i of sj.items || []) { const id = i.id && i.id.videoId; if (id && !got.includes(id)) got.push(id); }
+    scache[ck] = { at: Date.now(), ids: got };
+    for (const id of got) if (!ids.includes(id)) ids.push(id);
   }
   const now = Date.now();
   const all = [];
@@ -91,28 +140,33 @@ async function loadRegion(region) {
     if (R.channelCountries.includes(c)) return true;
     return region === 'cn' && !c && /[\u4e00-\u9fff]/.test(v.title); // Chinese title, channel hides its country
   });
-  const sorted = right.sort((a, b) => b.viewsPerDay - a.viewsPerDay);
+  right.sort((a, b) => b.viewsPerDay - a.viewsPerDay);
+  const seen = shown[region] || (shown[region] = new Set());
+  const sorted = right.filter((v) => !seen.has(v.id)).concat(right.filter((v) => seen.has(v.id))); // videos you have not seen first
 
   // Gemini watches the videos and removes the ones that are not about a dropshipping product.
-  let videos = sorted.slice(0, 30), note = '', ttl = SIX_HOURS;
+  let videos = sorted.slice(0, 30), note = '', ttl = LIST_TTL;
   const gemKey = process.env.GEMINI_API_KEY;
   if (!gemKey) {
     note = 'Videos are not checked by AI (GEMINI_API_KEY is missing), so non-product videos are still shown.';
-    ttl = 10 * 60 * 1000;
+    ttl = LIST_TTL;
   } else if (Date.now() < gemBlockedUntil) {
     note = 'Gemini limit reached for now, so videos were not checked. Try again in a few minutes.';
-    ttl = 5 * 60 * 1000;
+    ttl = LIST_TTL;
   } else {
     const maxWatch = parseInt(process.env.DROP_WATCH_MAX, 10) || 40;
     const f = await filterDropship(gemKey, sorted.slice(0, maxWatch), 30);
     if (!f.videos.length && !f.complete) {
       note = 'Gemini could not check the videos right now, so they are shown unfiltered. Try again in a few minutes.';
-      ttl = 5 * 60 * 1000;
+      ttl = LIST_TTL;
     } else {
       videos = f.videos;
-      if (!f.complete) { note = 'Gemini is still checking videos. Press the button again in a few minutes for more.'; ttl = 5 * 60 * 1000; }
+      if (!f.complete) { note = 'Gemini is still checking videos. Press the button again in a few minutes for more.'; ttl = LIST_TTL; }
     }
   }
+  videos = videos.slice().sort((a, b) => b.viewsPerDay - a.viewsPerDay);
+  if (seen.size > 250) seen.clear();
+  for (const v of videos) seen.add(v.id);
   const data = { videos, minViews, note };
   cache[region] = { at: Date.now(), data, ttl };
   return data;
@@ -283,7 +337,11 @@ async function filterDropship(key, cands, want) {
     if (hit && Date.now() - hit.at < DROP_TTL) verdict.set(v.id, hit);
   }
   const todo = cands.filter((v) => !verdict.has(v.id));
-  const good = () => cands.filter((v) => verdict.get(v.id) && verdict.get(v.id).ok).length;
+  const good = () => { // good videos found so far, counting one per product
+    const ps = new Set(); let n = 0;
+    for (const v of cands) { const h = verdict.get(v.id); if (!h || !h.ok) continue; const k = h.product.toLowerCase(); if (k && ps.has(k)) continue; if (k) ps.add(k); n++; }
+    return n;
+  };
   let next = 0, limited = false, timedOut = false;
   async function worker() {
     while (next < todo.length) {
@@ -301,7 +359,10 @@ async function filterDropship(key, cands, want) {
     }
   }
   await Promise.all(Array.from({ length: 5 }, worker));
-  const videos = cands.filter((v) => verdict.get(v.id) && verdict.get(v.id).ok).slice(0, want)
+  const sameProduct = new Set();
+  const videos = cands.filter((v) => verdict.get(v.id) && verdict.get(v.id).ok)
+    .filter((v) => { const k = verdict.get(v.id).product.toLowerCase(); if (!k) return true; if (sameProduct.has(k)) return false; sameProduct.add(k); return true; }) // one video per product
+    .slice(0, want)
     .map((v) => { const p = verdict.get(v.id).product; return p ? { ...v, product: p } : v; });
   const unchecked = cands.some((v) => !verdict.has(v.id)) && (limited || timedOut) && videos.length < want;
   return { videos, complete: !unchecked };
