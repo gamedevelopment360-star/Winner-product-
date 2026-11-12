@@ -440,7 +440,12 @@ module.exports = function registerViral(app) {
   app.get('/api/research/youtube-viral', async (req, res) => {
     try {
       const d = await loadVideos(req.query.region);
-      res.json({ videos: d.videos.map(({ tags, desc, ...v }) => v), minViews: d.minViews, days: d.days, note: d.note || '' });
+      const out = d.videos.map(({ tags, desc, ...v }) => v);
+      // Save these videos to the signed-in account right here, so it works no matter the order the routes are loaded in.
+      if (req.userEmail && db && typeof db.saveVideos === 'function' && out.length) {
+        db.saveVideos(req.userEmail, out).catch((e) => console.error('video save failed:', e.message || e));
+      }
+      res.json({ videos: out, minViews: d.minViews, days: d.days, note: d.note || '' });
     } catch (e) {
       console.error('viral videos failed:', e.message || e);
       res.status(e.status || 502).json({ error: e.message || 'Could not reach YouTube.' });
