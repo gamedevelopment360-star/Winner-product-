@@ -503,7 +503,7 @@ module.exports = function (app) {
   app.use('/api/research', (req, res, next) => {
     const email = req.userEmail;
     if (!email || req.method !== 'GET') return next();
-    const isVideos = req.path === '/youtube-trending';
+    const isVideos = req.path === '/youtube-trending' || req.path === '/youtube-viral'; // Trending Products (YouTube videos) is saved to the account too
     const isProducts = req.path === '/' || req.path.startsWith('/winners') || req.path === '/trending' || req.path === '/trending-fans';
     if (!isVideos && !isProducts) return next();
     const send = res.json.bind(res);
