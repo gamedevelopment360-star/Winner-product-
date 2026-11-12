@@ -416,6 +416,9 @@ $('#ytGo').onclick = async () => {
     if (sp) sp.classList.add('done');
     await new Promise((r) => setTimeout(r, 700));
     videos(el, j.videos);
+    const info = document.createElement('p'); info.className = 'msg';
+    info.textContent = (j.videos || []).length + ' products from the last ' + (j.days || 60) + ' days' + (j.note ? ' · ' + j.note : '');
+    el.prepend(info);
     try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {}
     $('#sVideos').textContent = num((j.videos || []).length);
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
