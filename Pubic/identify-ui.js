@@ -31,13 +31,13 @@
   // otherwise the AliExpress search link for the product.
   function copyBtn(href) {
     var b = document.createElement('button');
-    b.className = 'chip cp';
+    b.className = 'chip idcp';
     b.type = 'button';
-    b.textContent = 'Copy link';
+    b.textContent = 'Copy product link';
     b.style.marginLeft = '8px';
     b.onclick = function () {
       copyText(href).then(function () { b.textContent = 'Copied'; }).catch(function () { b.textContent = 'Copy failed'; });
-      setTimeout(function () { b.textContent = 'Copy link'; }, 2000);
+      setTimeout(function () { b.textContent = 'Copy product link'; }, 2000);
     };
     return b;
   }
