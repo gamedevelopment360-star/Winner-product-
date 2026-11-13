@@ -13,6 +13,35 @@
     return a;
   }
 
+  function copyText(t) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(t);
+    return new Promise(function (ok, no) {
+      var ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy') ? ok() : no(); } catch (e) { no(e); }
+      document.body.removeChild(ta);
+    });
+  }
+
+  // "Copy link" button: copies the direct product link (aliexpress.com/item/...) when we have it,
+  // otherwise the AliExpress search link for the product.
+  function copyBtn(href) {
+    var b = document.createElement('button');
+    b.className = 'chip cp';
+    b.type = 'button';
+    b.textContent = 'Copy link';
+    b.style.marginLeft = '8px';
+    b.onclick = function () {
+      copyText(href).then(function () { b.textContent = 'Copied'; }).catch(function () { b.textContent = 'Copy failed'; });
+      setTimeout(function () { b.textContent = 'Copy link'; }, 2000);
+    };
+    return b;
+  }
+
   function show(out, d) {
     out.className = 'meta';
     out.textContent = '';
@@ -31,7 +60,9 @@
         var t = document.createElement('div');
         t.className = 'idrowname';
         t.appendChild(document.createTextNode((i + 1) + '. '));
-        t.appendChild(link(p.product + (p.brand ? ' (' + p.brand + ')' : ''), p.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(p.product))));
+        var pu = p.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(p.product));
+        t.appendChild(link(p.product + (p.brand ? ' (' + p.brand + ')' : ''), pu));
+        t.appendChild(copyBtn(pu));
         row.appendChild(t);
         out.appendChild(row);
       });
@@ -40,8 +71,10 @@
     var b = document.createElement('b');
     b.textContent = 'Product: ';
     out.appendChild(b);
-    out.appendChild(link(d.product + (d.brand ? ' (' + d.brand + ')' : ''), d.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(d.product))));
+    var u = d.aliUrl || ('https://www.aliexpress.com/wholesale?SearchText=' + encodeURIComponent(d.product));
+    out.appendChild(link(d.product + (d.brand ? ' (' + d.brand + ')' : ''), u));
     out.appendChild(document.createTextNode(' · ' + (d.confidence || '') + ' confidence'));
+    out.appendChild(copyBtn(u));
     if (d.reason) {
       out.appendChild(document.createElement('br'));
       out.appendChild(document.createTextNode(d.reason));
