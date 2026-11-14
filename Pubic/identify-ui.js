@@ -30,6 +30,7 @@
   // "Copy link" button: copies the direct product link (aliexpress.com/item/...) when we have it,
   // otherwise the AliExpress search link for the product.
   function copyBtn(href) {
+    if (href.charAt(0) === '/') href = location.origin + href; // a site-relative link only works after adding the site address
     var b = document.createElement('button');
     b.className = 'chip idcp';
     b.type = 'button';
