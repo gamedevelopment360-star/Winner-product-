@@ -1,4 +1,4 @@
-/* identify-ui.css: styles for the Identify product button, results, notifications and bell. */
+/* identify-ui.css: styles for the Identify product button, results, the notification bell and the Notifications page. */
 .idcard {
   margin-top: 12px;
   padding: 14px;
@@ -403,92 +403,25 @@
   text-align: center;
   border: 2px solid var(--bg, #0f1115)
 }
-body.locked #idbell,
-body.locked #idpanel,
-body.locked #idback {
+body.locked #idbell {
   display: none !important
-}
-#idback {
-  position: fixed;
-  inset: 0;
-  z-index: 7;
-  background: rgba(0, 0, 0, .5)
-}
-#idpanel {
-  position: fixed;
-  z-index: 8;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  max-height: 78vh;
-  display: flex;
-  flex-direction: column;
-  background: #161920;
-  border: 1px solid var(--line, #2a2f3a);
-  border-radius: 18px 18px 0 0;
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, .55);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  animation: idsheet .22s ease-out
-}
-@keyframes idsheet {
-  from {
-    transform: translateY(30px);
-    opacity: 0
-  }
-  to {
-    transform: none;
-    opacity: 1
-  }
-}
-.idph {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line, #2a2f3a)
-}
-.idph b {
-  font-size: 16px
-}
-.idph .idpa {
-  display: flex;
-  gap: 6px
-}
-.idph button {
-  background: none;
-  border: 1px solid var(--line, #2a2f3a);
-  color: var(--mute, #8b93a5);
-  border-radius: 8px;
-  padding: 6px 10px;
-  font-size: 12px;
-  cursor: pointer
-}
-.idph button:hover {
-  color: var(--text, #e8eaf0);
-  border-color: var(--accent, #2ecc71)
-}
-.idpl {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain
 }
 .idni {
   display: flex;
   gap: 12px;
   align-items: flex-start;
-  padding: 13px 16px;
-  border-bottom: 1px solid #20242d;
+  padding: 13px 14px;
+  background: #181b22;
+  border: 1px solid var(--line, #2a2f3a);
+  border-radius: 12px;
   cursor: pointer
 }
-.idni:last-child {
-  border-bottom: 0
-}
 .idni:hover {
-  background: #1b1f28
+  border-color: var(--accent, #2ecc71)
 }
 .idni.unread {
-  background: rgba(46, 204, 113, .06)
+  background: rgba(46, 204, 113, .08);
+  border-color: rgba(46, 204, 113, .35)
 }
 .idni .idti {
   flex: none;
@@ -547,20 +480,6 @@ body.locked #idback {
     top: 12px;
     right: 18px
   }
-  #idpanel {
-    left: auto;
-    right: 18px;
-    top: 62px;
-    bottom: auto;
-    width: 380px;
-    max-height: 70vh;
-    border-radius: 14px;
-    padding-bottom: 0;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, .55)
-  }
-  #idback {
-    background: transparent
-  }
 }
 @media (min-width:600px) {
   .idcard {
@@ -592,8 +511,7 @@ body.locked #idback {
   }
 }
 @media (prefers-reduced-motion:reduce) {
-  #idbell.ring svg,
-  #idpanel {
+  #idbell.ring svg {
     animation: none
   }
   .idcp {
@@ -609,4 +527,60 @@ body.locked #idback {
   .idtoast {
     animation: none
   }
+}
+.idnbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 12px
+}
+.idnbar .dsub {
+  margin: 0
+}
+.idclear {
+  flex: none;
+  width: auto;
+  background: none;
+  border: 1px solid var(--line, #2a2f3a);
+  color: var(--mute, #8b93a5);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer
+}
+.idclear:hover {
+  color: var(--text, #e8eaf0);
+  border-color: var(--accent, #2ecc71)
+}
+.idnlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 720px
+}
+/* Layout fix: long words or hashtags in a video title must not make the page wider than the screen */
+main,
+.page {
+  min-width: 0;
+  max-width: 100%
+}
+main {
+  overflow-x: clip
+}
+.item {
+  max-width: 100%;
+  box-sizing: border-box
+}
+.item > div {
+  min-width: 0;
+  flex: 1
+}
+.item a {
+  overflow-wrap: anywhere;
+  word-break: break-word
+}
+.idbtn {
+  max-width: 100%;
+  box-sizing: border-box
 }
