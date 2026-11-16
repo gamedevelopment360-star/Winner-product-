@@ -51,6 +51,8 @@
     if (href.charAt(0) === '/') href = location.origin + href; // a site-relative link only works after adding the site address
     var b = document.createElement('button');
     b.className = 'idcp';
+    b.setAttribute('aria-label', 'Copy product link');
+    b.title = 'Copy product link';
     b.type = 'button';
     function reset() { b.className = 'idcp'; b.innerHTML = COPY_ICON + '<span>Copy product link</span>'; }
     reset();
@@ -341,8 +343,10 @@
     var vt = card.querySelector('a[href*="youtu"]');
     var video = vt && vt.textContent ? vt.textContent.trim() : 'your video';
     var ok = !failed && d && d.product;
-    var title = ok ? 'Product found' : (failed ? 'Could not identify' : 'No product found');
-    var text = ok ? d.product : video;
+    var msg = d && (d.error || d.reason) ? String(d.error || d.reason) : '';
+    var limit = !ok && /429|quota|exceeded/i.test(msg);
+    var title = ok ? 'Product found' : (limit ? 'Lookup limit reached' : (failed ? 'Could not identify' : 'No product found'));
+    var text = ok ? d.product : (limit ? 'Try again when the limit resets' : video);
     toast(title, text, !ok, card);
     addToLog(title, text, ok, id);
     try { if (navigator.vibrate) navigator.vibrate(ok ? [120] : [80, 60, 80]); } catch (e) {}
@@ -360,21 +364,28 @@
     box.className = 'idwarn';
     var t = document.createElement('b');
     var m = String(msg || '');
+    var shown, detail = '';
     if (/429|quota|exceeded/i.test(m)) {
       t.textContent = 'AliExpress lookup limit reached';
-      box.appendChild(t);
-      box.appendChild(document.createTextNode(
-        'The monthly search limit on your RapidAPI plan has been used up, ' +
-        'so products cannot be matched on AliExpress right now. ' +
-        'It starts working again when the limit resets, or after you upgrade the plan.'
-      ));
-      var sm = document.createElement('small');
-      sm.textContent = m.length > 160 ? m.slice(0, 160) + '\u2026' : m;
-      box.appendChild(sm);
+      shown = 'The monthly RapidAPI limit is used up. It works again when the limit resets or after you upgrade the plan.';
+      detail = m;
     } else {
       t.textContent = 'No product to show';
-      box.appendChild(t);
-      box.appendChild(document.createTextNode(m || 'No physical product found in this video.'));
+      shown = m || 'No physical product found in this video.';
+      if (shown.length > 140) { detail = shown; shown = shown.slice(0, 140).replace(/\s+\S*$/, '') + '\u2026'; }
+    }
+    box.appendChild(t);
+    box.appendChild(document.createTextNode(shown));
+    if (detail) {
+      var dt = document.createElement('details');
+      dt.className = 'iddet';
+      var sum = document.createElement('summary');
+      sum.textContent = 'Details';
+      var sm = document.createElement('small');
+      sm.textContent = detail.length > 400 ? detail.slice(0, 400) + '\u2026' : detail;
+      dt.appendChild(sum);
+      dt.appendChild(sm);
+      box.appendChild(dt);
     }
     out.appendChild(box);
   }
