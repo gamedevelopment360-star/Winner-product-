@@ -115,6 +115,103 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 @keyframes ldturn{to{transform:rotate(360deg)}}
 #ytGo:disabled{opacity:.7;cursor:progress}
 @media(prefers-reduced-motion:reduce){.ldspin{animation-duration:2.5s}}
+
+/* ===== Professional design layer: tokens, typography, components, responsive breakpoints ===== */
+:root{--panel-2:#1d212b;--line-2:#343b49;--radius:14px;--shadow:0 8px 24px rgba(0,0,0,.28);--ring:0 0 0 3px rgba(46,204,113,.35);--ease:cubic-bezier(.2,.7,.2,1)}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:clamp(14.5px,.3vw + 13.6px,16px);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+h2{font-size:clamp(20px,1.1vw + 16px,28px);letter-spacing:-.015em;line-height:1.2}
+:where(button,a,input,[role=button]):focus-visible{outline:none;box-shadow:var(--ring)}
+input{min-height:44px;transition:border-color .15s,box-shadow .15s}
+input:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
+.btn{min-height:44px;transition:filter .15s,transform .1s,box-shadow .15s;box-shadow:0 2px 10px rgba(46,204,113,.22)}
+.btn.alt{box-shadow:none}
+.btn:active{transform:translateY(1px)}
+.btn:disabled{box-shadow:none}
+.backbtn,.chip{min-height:40px;transition:border-color .15s,background .15s}
+.card{border-radius:var(--radius)}
+nav{box-shadow:1px 0 0 rgba(255,255,255,.02)}
+nav button{transition:background .15s,color .15s;position:relative}
+nav button.on{box-shadow:inset 3px 0 0 var(--accent)}
+.top{background:rgba(15,17,21,.88);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+main{width:100%}
+
+/* video cards: thumbnail + title on top, Identify button and result on their own full-width row */
+.page .item{align-items:flex-start;align-content:flex-start;box-shadow:0 1px 0 rgba(255,255,255,.03) inset}
+#dTop,#dVid,#yOut{align-items:start}
+.item .idrow{flex-wrap:wrap}
+.item .idrowname{flex:1 1 150px;min-width:150px}
+.item .idrow .idcp{flex:1 1 auto}
+.page .item>div{line-height:1.4}
+.item>.meta{margin-top:0}
+.item>.meta .idcard{margin-top:2px}
+.page .item .idbtn{width:100%;min-height:46px;margin-top:2px}
+.item>div>.meta{min-width:0}
+
+/* lists of videos: one column on phones, grid on larger screens */
+#yOut{display:grid;grid-template-columns:1fr;gap:12px}
+#yOut .item{margin-bottom:0}
+#yOut>p,#yOut>.ldbox,#yOut>.msg{grid-column:1/-1}
+#yOut>p.msg{margin:0;padding:2px 0 4px;font-size:13px}
+
+@media(hover:hover){
+ .btn:hover{filter:brightness(1.07)}
+ .btn.alt:hover{filter:none;border-color:var(--line-2)}
+ nav button:hover{background:#232834;color:var(--text)}
+ .page .item:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+}
+@media(pointer:coarse){
+ nav button{min-height:46px}
+ .chip,.backbtn{min-height:44px}
+}
+
+/* very small phones */
+@media(max-width:360px){
+ main{padding:12px}
+ .page .item{--t:64px;padding:10px;gap:8px}
+ .page .item img{width:64px;height:64px}
+ .btn{font-size:13px;padding:10px 12px}
+ #dash .stat b{font-size:24px}
+ h2{font-size:19px}
+}
+/* phones */
+@media(max-width:759px){
+ .row{gap:8px}
+ .row .btn{flex:1 1 auto}
+ #pickbar{padding-left:12px;padding-right:12px}
+}
+/* large phones and small tablets (portrait) */
+@media(min-width:600px) and (max-width:759px){
+ main{padding:18px 22px}
+ #dTop,#dVid,#yOut{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+}
+/* tablets and small laptops: sidebar is always visible, cards in two columns */
+@media(min-width:760px){
+ main{padding:24px 28px}
+ #dTop,#dVid,#yOut{grid-template-columns:1fr;gap:14px}
+ .page .item img{width:104px;height:104px}
+ body #idtoasts{left:auto;right:20px;bottom:20px;align-items:flex-end;padding:0}
+}
+/* small laptops and landscape tablets: two columns once the content area is wide enough */
+@media(min-width:900px) and (max-width:1359px){
+ #dTop,#dVid,#yOut{grid-template-columns:repeat(2,1fr)}
+}
+/* desktops: three columns, content centred */
+@media(min-width:1360px){
+ main{max-width:1320px;margin-inline:auto;padding:32px 40px}
+ #dTop,#dVid,#yOut{grid-template-columns:repeat(3,1fr);gap:16px}
+ .page .item img{width:96px;height:96px}
+}
+/* phones turned sideways: keep the menu scrollable */
+@media(max-height:480px) and (orientation:landscape){
+ nav{overflow-y:auto}
+ .ldbox{padding:14px 10px}
+}
+@media(prefers-reduced-motion:reduce){
+ .btn,.page .item,nav button,input{transition:none}
+ .page .item:hover{transform:none}
+}
+@media print{nav,.top,#pickbar,.idbtn,#idbell,#idtoasts{display:none!important}main{max-width:none;padding:0}}
 </style>
 <link rel="stylesheet" href="/identify-style.css">
 </head>
@@ -337,6 +434,19 @@ $('#closeNav').onclick = () => setNav(false);
 $('#scrim').onclick = () => setNav(false);
 
 // dashboard
+// Saved videos kept on this phone. Trending videos are saved here every time you tap Trending Products.
+const SV_KEY = 'wf_saved_videos';
+function localVideos() { try { const a = JSON.parse(localStorage.getItem(SV_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function mergeVideos(lists, max) {
+  const seen = new Set(), out = [];
+  for (const l of lists) for (const v of (l || [])) { const k = v && (v.id || v.url); if (!k || seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= max) return out; }
+  return out;
+}
+function saveTrending(vids) {
+  const out = mergeVideos([vids, localVideos()], 500); // newest first, no repeats, at most 500
+  try { localStorage.setItem(SV_KEY, JSON.stringify(out)); } catch (e) {}
+  return out.length;
+}
 function videoCount() { try { return parseInt(localStorage.getItem('wf_videos'), 10) || 0; } catch (e) { return 0; } }
 let dashList = [];
 async function loadDash() {
@@ -344,11 +454,17 @@ async function loadDash() {
     .catch((e) => { $('#dTop').textContent = e.message; });
   api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
   allHist().then((h) => $('#sSearch').textContent = num(h.length));
+  $('#sVideos').textContent = num(localVideos().length);
+  videos($('#dVid'), localVideos()); // this phone's saved videos show straight away
   api('/api/research/my-videos?limit=500').then((j) => {
-    const v = j.videos || [];
+    const v = mergeVideos([j.videos || [], localVideos()], 1000);
     $('#sVideos').textContent = num(v.length);
     videos($('#dVid'), v);
-  }).catch((e) => { $('#sVideos').textContent = '0'; $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; });
+  }).catch((e) => {
+    const v = localVideos();
+    $('#sVideos').textContent = num(v.length);
+    if (!v.length) { $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; }
+  });
 }
 
 // If some products are ticked, copy only those. If none are ticked, copy the whole list.
@@ -416,11 +532,12 @@ $('#ytGo').onclick = async () => {
     if (sp) sp.classList.add('done');
     await new Promise((r) => setTimeout(r, 700));
     videos(el, j.videos);
+    const savedN = saveTrending(j.videos); // keep these videos in Dashboard > Videos saved
     const info = document.createElement('p'); info.className = 'msg';
-    info.textContent = (j.videos || []).length + ' products from the last ' + (j.days || 60) + ' days' + (j.note ? ' · ' + j.note : '');
+    info.textContent = (j.videos || []).length + ' products from the last ' + (j.days || 60) + ' days · saved to Dashboard (' + savedN + ' videos saved)' + (j.note ? ' · ' + j.note : '');
     el.prepend(info);
     try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {}
-    $('#sVideos').textContent = num((j.videos || []).length);
+    $('#sVideos').textContent = num(savedN);
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
   finally { clearInterval(tick); btn.disabled = false; }
 };
