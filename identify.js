@@ -307,14 +307,14 @@ async function identify(id) {
   }
   if (!list.length) return { product: '', reason: 'No physical product found in this video.' };
 
-  // AliExpress page for each product (the first three; each lookup uses RapidAPI quota, but answers are remembered)
+  // AliExpress page for each product (all of them; each lookup uses RapidAPI quota, but answers are remembered)
   const notes = [];
   const out = [];
   for (let i = 0; i < list.length; i++) {
     const p = Object.assign({}, list[i]);
     p.aliUrl = searchUrl(p.product);
     p.lookup = 'skipped'; // ok | none | error | nokey | skipped
-    if (i < 3) {
+    {
       const r = await resolveAli(p.product);
       p.lookup = r.status;
       if (r.status === 'ok') {
