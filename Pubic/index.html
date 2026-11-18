@@ -114,6 +114,10 @@ label{display:block;color:var(--mute);font-size:13px;margin:10px 0 4px}
 .ldspin.done::after{content:"\2713"}
 @keyframes ldturn{to{transform:rotate(360deg)}}
 #ytGo:disabled{opacity:.7;cursor:progress}
+#dashLoad[hidden]{display:none}
+.stat b.ld{display:inline-block;min-width:46px;border-radius:8px;color:transparent;background:linear-gradient(90deg,#222733 25%,#2f3644 50%,#222733 75%);background-size:200% 100%;animation:ldshim 1.1s linear infinite}
+@keyframes ldshim{to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.stat b.ld{animation:none}}
 @media(prefers-reduced-motion:reduce){.ldspin{animation-duration:2.5s}}
 
 /* ===== Professional design layer: tokens, typography, components, responsive breakpoints ===== */
@@ -481,21 +485,40 @@ function saveTrending(vids) {
 function videoCount() { try { return parseInt(localStorage.getItem('wf_videos'), 10) || 0; } catch (e) { return 0; } }
 let dashList = [];
 async function loadDash() {
-  api('/api/saved?sort=score&limit=500').then((j) => { $('#sSaved').textContent = num(j.results.length); dashList = j.results; list($('#dTop'), j.results, 'No saved products yet. Products you search for or open from Winning Products are saved here.'); $('#dCopyRow').hidden = !j.results.length; })
-    .catch((e) => { $('#dTop').textContent = e.message; });
-  api('/api/research/rising').then((j) => $('#sRising').textContent = num((j.results || []).length)).catch(() => {});
-  allHist().then((h) => $('#sSearch').textContent = num(h.length));
-  $('#sVideos').textContent = num(localVideos().length);
-  videos($('#dVid'), localVideos()); // this phone's saved videos show straight away
-  api('/api/research/my-videos?limit=500').then((j) => {
-    const v = mergeVideos([j.videos || [], localVideos()], 1000);
-    $('#sVideos').textContent = num(v.length);
-    videos($('#dVid'), v);
-  }).catch((e) => {
-    const v = localVideos();
-    $('#sVideos').textContent = num(v.length);
-    if (!v.length) { $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + e.message; }
-  });
+  // Everything is fetched at the same time and shown at the same moment (no number appears before the others).
+  const counters = ['#sSaved', '#sRising', '#sVideos', '#sSearch'].map((q) => $(q));
+  counters.forEach((c) => c.classList.add('ld'));
+  let dl = $('#dashLoad');
+  if (!dl) { dl = document.createElement('div'); dl.id = 'dashLoad'; dl.className = 'ldbox'; dl.setAttribute('role', 'status'); dl.innerHTML = '<div class="ldspin"></div><p>Loading your dashboard…</p>'; $('#cardSaved').parentElement.insertAdjacentElement('afterend', dl); }
+  dl.hidden = false;
+  for (const [q, what] of [['#dTop', 'saved products'], ['#dVid', 'saved videos']]) {
+    const el = $(q);
+    if (!el.children.length && !el.textContent.trim()) { el.className = ''; el.innerHTML = '<div class="ldbox" role="status"><div class="ldspin"></div><p>Loading ' + what + '…</p></div>'; }
+  }
+  // each request gets at most 10 seconds, so one slow answer can never hold the whole dashboard back
+  const within = (p) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('Timed out. Try again.')), 10000))]);
+  const [saved, rising, mine, hist] = await Promise.all([
+    within(api('/api/saved?sort=score&limit=500')).catch((e) => ({ error: e })),
+    within(api('/api/research/rising')).catch(() => ({})),
+    within(api('/api/research/my-videos?limit=500')).catch((e) => ({ error: e })),
+    within(allHist()).catch(() => []),
+  ]);
+  // all results are ready: update every counter and list together
+  if (saved.error) { $('#dTop').className = 'msg err'; $('#dTop').textContent = saved.error.message; }
+  else {
+    dashList = saved.results || [];
+    list($('#dTop'), dashList, 'No saved products yet. Products you search for or open from Winning Products are saved here.');
+    $('#dCopyRow').hidden = !dashList.length;
+  }
+  const v = mergeVideos([mine.error ? [] : (mine.videos || []), localVideos()], 1000);
+  if (mine.error && !v.length) { $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + mine.error.message; }
+  else videos($('#dVid'), v);
+  $('#sSaved').textContent = num(saved.error ? 0 : dashList.length);
+  $('#sRising').textContent = num((rising.results || []).length);
+  $('#sVideos').textContent = num(v.length);
+  $('#sSearch').textContent = num((hist || []).length);
+  counters.forEach((c) => c.classList.remove('ld'));
+  dl.hidden = true;
 }
 
 // If some products are ticked, copy only those. If none are ticked, copy the whole list.
