@@ -263,9 +263,23 @@
     };
   }
 
-  function addButton(card) {
-    var info = cardInfo(card);
-    if (!info.name) return;
+  // Video cards: the product name comes from the "Product:" line (or from the Identify product result).
+  function videoName(card) {
+    var ms = card.querySelectorAll('.meta');
+    for (var i = 0; i < ms.length; i++) {
+      var txt = ms[i].textContent || '';
+      if (!/^\s*Product:/i.test(txt)) continue;
+      var a = ms[i].querySelector('a[href*="SearchText"]');
+      if (a && a.textContent.trim()) return a.textContent.trim();
+      var t = txt.replace(/^\s*Product:\s*/i, '').split('·')[0].split(',')[0].trim();
+      if (t) return t;
+    }
+    var n = card.querySelector('.idrowname a, a.idname');
+    return n ? n.textContent.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
+  }
+
+  function addButton(card, isVideo) {
+    if (!isVideo && !cardInfo(card).name) return;
     card.style.flexWrap = 'wrap';
     var btn = el('button', 'btn alt wpbtn', LABEL);
     btn.type = 'button';
@@ -277,6 +291,13 @@
       if (loaded) { // toggle the result
         out.hidden = !out.hidden;
         btn.textContent = out.hidden ? LABEL : 'Hide analysis';
+        return;
+      }
+      var info = isVideo ? { name: videoName(card) } : cardInfo(card);
+      if (!info.name) {
+        out.hidden = false;
+        out.textContent = '';
+        out.appendChild(el('div', 'wp-err', 'I need the product name first. Tap "Identify product" on this card, then try again.'));
         return;
       }
       btn.disabled = true;
@@ -323,10 +344,10 @@
     for (var i = 0; i < cards.length; i++) {
       var c = cards[i];
       if (c.dataset.wpDone) continue;
-      if (!c.querySelector('.cp')) continue;                    // only product cards (they have "Copy link")
-      if (c.querySelector('a[href*="youtu"]')) continue;        // video cards have their own buttons
+      var isVideo = !!c.querySelector('a[href*="youtu"]');      // video cards (Saved videos, YouTube Research)
+      if (!isVideo && !c.querySelector('.cp')) continue;        // product cards have "Copy link"
       c.dataset.wpDone = '1';
-      addButton(c);
+      addButton(c, isVideo);
     }
   }
   var timer = null;
