@@ -146,6 +146,20 @@ body .idtoast span.idtx{font-size:12px}
 .idpnote{margin:6px 0 0;font-size:12px;color:var(--mute)}
 .idrowinfo{min-width:0;flex:1 1 auto}
 .idrowprice{display:block;margin-top:2px;font-size:12px;font-weight:500;color:var(--mute)}
+
+/* Positive comments */
+.page .item .idcbtn{width:100%;min-height:44px;margin-top:8px;background:var(--panel-2,#1d212b);color:var(--text);border:1px solid var(--line-2,#343b49);border-radius:12px;font-weight:600;cursor:pointer}
+.idcbtn:hover{border-color:var(--accent)}
+.idcbtn.busy{opacity:.75;cursor:progress}
+.idcom{margin-top:10px;padding:12px;border-radius:12px;background:var(--panel-2,#1d212b);border:1px solid var(--line-2,#343b49);border-left:3px solid var(--accent);text-align:left}
+.idchead{font-weight:700;font-size:14px;margin-bottom:8px;color:var(--text)}
+.idchead small{font-weight:500;color:var(--mute);margin-left:6px}
+.idcitem{padding:10px 0;border-top:1px solid var(--line-2,#343b49)}
+.idchead + .idcitem{border-top:0;padding-top:0}
+.idcitem p{margin:0 0 4px;font-size:14px;line-height:1.45;color:var(--text);overflow-wrap:anywhere}
+.idcitem small{color:var(--mute);font-size:12px}
+.idcnote{margin:8px 0 0;font-size:12px;color:var(--mute)}
+.idcnone{margin-top:10px;font-size:13px;color:var(--mute)}
 `;
     (document.head || document.documentElement).appendChild(st);
   })();
@@ -663,6 +677,49 @@ body .idtoast span.idtx{font-size:12px}
     box.appendChild(act);
   }
 
+  // Positive comments from the YouTube video (picked on the server).
+  function showComments(out, d) {
+    out.className = 'meta';
+    out.textContent = '';
+    var list = d.comments || [];
+    if (!list.length) {
+      var none = document.createElement('p');
+      none.className = 'idcnone';
+      none.textContent = d.note || 'No positive comments found on this video.';
+      out.appendChild(none);
+      return;
+    }
+    var box = document.createElement('div');
+    box.className = 'idcom';
+    var head = document.createElement('div');
+    head.className = 'idchead';
+    head.textContent = list.length + ' positive comment' + (list.length === 1 ? '' : 's');
+    if (d.read) {
+      var sm = document.createElement('small');
+      sm.textContent = 'out of ' + d.read + ' read';
+      head.appendChild(sm);
+    }
+    box.appendChild(head);
+    list.forEach(function (c) {
+      var it = document.createElement('div');
+      it.className = 'idcitem';
+      var t = document.createElement('p');
+      t.textContent = c.text;
+      var by = document.createElement('small');
+      by.textContent = c.author + (c.likes ? ' \u00b7 ' + c.likes + ' like' + (c.likes === 1 ? '' : 's') : '') + (c.when ? ' \u00b7 ' + c.when : '');
+      it.appendChild(t);
+      it.appendChild(by);
+      box.appendChild(it);
+    });
+    if (d.method === 'words') {
+      var nt = document.createElement('p');
+      nt.className = 'idcnote';
+      nt.textContent = 'Picked with a simple word check because the AI was busy.';
+      box.appendChild(nt);
+    }
+    out.appendChild(box);
+  }
+
   function addButton(card, id) {
     // The button and the result sit on their own full-width row under the thumbnail and the title.
     var holder = card;
@@ -699,6 +756,51 @@ body .idtoast span.idtx{font-size:12px}
     };
     holder.appendChild(btn);
     holder.appendChild(out);
+
+    var cbtn = document.createElement('button');
+    cbtn.className = 'btn idcbtn';
+    cbtn.type = 'button';
+    cbtn.textContent = 'Positive comments';
+    cbtn.style.flex = '0 0 100%';
+    var cout = document.createElement('div');
+    cout.className = 'meta';
+    cout.style.flex = '0 0 100%';
+    cout.style.minWidth = '0';
+    cbtn.onclick = function () {
+      cbtn.disabled = true;
+      cbtn.classList.add('busy');
+      cbtn.textContent = 'Reading comments\u2026';
+      cout.className = 'meta';
+      cout.textContent = '';
+      var wait = document.createElement('div');
+      wait.className = 'idload';
+      wait.setAttribute('role', 'status');
+      var sp = document.createElement('span');
+      sp.className = 'idspin';
+      var tx = document.createElement('div');
+      tx.textContent = 'Reading the comments\u2026';
+      wait.appendChild(sp);
+      wait.appendChild(tx);
+      cout.appendChild(wait);
+      function done() { cbtn.disabled = false; cbtn.classList.remove('busy'); cbtn.textContent = 'Positive comments'; }
+      fetch('/api/research/video-comments?id=' + encodeURIComponent(id), { credentials: 'same-origin' })
+        .then(function (r) { return r.json().catch(function () { return {}; }); })
+        .then(function (d) {
+          done();
+          if (d.error) { cout.textContent = ''; var e = document.createElement('p'); e.className = 'idcnone'; e.textContent = d.error; cout.appendChild(e); return; }
+          showComments(cout, d);
+        })
+        .catch(function (e) {
+          done();
+          cout.textContent = '';
+          var m = document.createElement('p');
+          m.className = 'idcnone';
+          m.textContent = 'Could not load the comments: ' + (e && e.message ? e.message : e);
+          cout.appendChild(m);
+        });
+    };
+    holder.appendChild(cbtn);
+    holder.appendChild(cout);
   }
 
   function scan() {
