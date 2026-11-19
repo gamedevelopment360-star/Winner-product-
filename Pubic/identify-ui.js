@@ -518,6 +518,9 @@ body .idtoast span.idtx{font-size:12px}
   try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {}); } catch (e) {}
 
   // Friendly message box for "no product" and error cases (also explains the RapidAPI limit in plain words).
+  // True when the AliExpress lookup message is about the RapidAPI limit (monthly quota used up).
+  function isLimitText(s) { return /429|quota|exceeded|limit/i.test(String(s || '')); }
+
   function notice(out, msg) {
     out.className = 'meta';
     out.textContent = '';
@@ -613,6 +616,8 @@ body .idtoast span.idtx{font-size:12px}
         rp.className = 'idrowprice';
         if (Number(p.cost) > 0) {
           rp.textContent = 'Cost ' + money(p.cost) + (Number(p.sell) > 0 ? ' \u00b7 Sell ~' + money(p.sell) : '');
+        } else if (p.lookup !== 'ok' && isLimitText(d.lookupNote)) {
+          rp.textContent = 'Limit reached, opens an AliExpress search';
         } else if (p.lookup === 'none') {
           rp.textContent = 'No close match on AliExpress, opens a search';
         } else if (p.lookup === 'error') {
@@ -631,7 +636,10 @@ body .idtoast span.idtx{font-size:12px}
       if (d.lookupNote) {
         var ln = document.createElement('p');
         ln.className = 'idpnote';
-        ln.textContent = d.lookupNote;
+        ln.textContent = isLimitText(d.lookupNote)
+          ? 'You have reached your AliExpress lookup limit (RapidAPI monthly plan). Links open a search page until it resets or you upgrade the plan.'
+          : d.lookupNote;
+        ln.title = String(d.lookupNote || '');
         box.appendChild(ln);
       }
       return;
@@ -755,7 +763,6 @@ body .idtoast span.idtx{font-size:12px}
         });
     };
     holder.appendChild(btn);
-    holder.appendChild(out);
 
     var cbtn = document.createElement('button');
     cbtn.className = 'btn idcbtn';
@@ -799,7 +806,9 @@ body .idtoast span.idtx{font-size:12px}
           cout.appendChild(m);
         });
     };
+    // order on the card: Identify button, Positive comments button, then the two results (so both buttons are always visible together)
     holder.appendChild(cbtn);
+    holder.appendChild(out);
     holder.appendChild(cout);
   }
 
