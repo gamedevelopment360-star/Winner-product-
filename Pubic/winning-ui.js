@@ -138,6 +138,13 @@
     function upd() {
       var s = parseFloat(inp.sell.value) || 0, co = parseFloat(inp.cost.value) || 0, sh = parseFloat(inp.ship.value) || 0;
       var ad = parseFloat(inp.ads.value) || 0, fp = parseFloat(inp.fee.value) || 0;
+      if (!(s > 0) || !(co > 0)) { // do not show a fake loss while the prices are empty
+        big.textContent = 'Enter the selling price and supplier price';
+        big.className = 'big';
+        l1.textContent = 'Your profit per sale will show here.';
+        l2.textContent = '';
+        return;
+      }
       var fees = s > 0 ? s * fp / 100 + fixed : 0;
       var p = s - co - sh - ad - fees;
       var spend = co + sh + ad;
@@ -170,8 +177,9 @@
     }
     var g = el('div', 'wp-grid');
     var cost = d.supplier && d.supplier.cost;
-    g.appendChild(stat('Supplier price', cost ? money(cost) : 'Not found', d.supplier && d.supplier.direct ? 'From the supplier' : 'Open the link to check'));
-    g.appendChild(stat('Selling price', d.sell ? money(d.sell) : '-', d.sellWhy || (d.sell ? 'Suggested by rule' : '')));
+    var est = !!(d.supplier && d.supplier.estimated);
+    g.appendChild(stat('Supplier price', cost ? (est ? '~' : '') + money(cost) : 'Not found', est ? 'AI estimate. Open the link to check' : d.supplier && d.supplier.direct ? 'From the supplier' : 'Open the link to check'));
+    g.appendChild(stat('Selling price', d.sell ? (est ? '~' : '') + money(d.sell) : '-', d.sellWhy || (d.sell ? (est ? 'Estimated' : 'Suggested by rule') : 'Type your own in the calculator')));
     g.appendChild(stat('Profit per sale', d.profit ? money(d.profit.profit) : '-', d.profit ? d.profit.margin + '% margin after shipping, fees and ads' : 'Needs a supplier price'));
     if (d.demand) {
       var ords = d.demand.sold != null ? short(d.demand.sold) + ' orders' + (d.demand.rating ? ' · ★ ' + d.demand.rating : '') : '';
