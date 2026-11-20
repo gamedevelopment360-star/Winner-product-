@@ -52,7 +52,18 @@
       '.wp-desc h5{margin:0 0 6px;font-size:15px}',
       '.wp-desc p{margin:0 0 8px;font-size:14px;line-height:1.5}',
       '.wp-desc ul{margin:0 0 10px;padding-left:18px;font-size:14px;line-height:1.5}',
-      '.wp-note{margin:8px 0 0;font-size:12px;color:var(--mute);line-height:1.4}'
+      '.wp-note{margin:8px 0 0;font-size:12px;color:var(--mute);line-height:1.4}',
+      '.wp-prod{background:#12161d;border:1px solid var(--line);border-radius:12px;margin-top:10px;overflow:hidden}',
+      '.wp-prodhead{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;padding:12px;background:none;border:0;color:var(--text);font-size:15px;font-weight:600;text-align:left;cursor:pointer}',
+      '.wp-prodhead span:first-child{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}',
+      '.wp-prodhead .wp-pill{flex:none}',
+      '.wp-prodbody{padding:0 10px 10px}',
+      '.wp-prodbody .wp-box:first-child{margin-top:0}',
+      '.wp-rank{margin:6px 0 0;padding:0;list-style:none}',
+      '.wp-rank li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}',
+      '.wp-rank li:first-child{border-top:0}',
+      '.wp-badge{flex:0 0 100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}',
+      '.wp-badge .wp-note{margin:0}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(st);
   })();
@@ -169,7 +180,7 @@
       var sc = el('div', 'wp-score', String(d.score));
       sc.appendChild(el('small', '', ' / 100'));
       v.appendChild(sc);
-      v.appendChild(el('span', 'wp-pill ' + (d.verdict === 'Winning' ? 'good' : d.verdict === 'Worth testing' ? 'mid' : 'bad'), d.verdict));
+      v.appendChild(el('span', 'wp-pill ' + verdictClass(d.verdict), '\u2605 ' + vlabel(d.verdict)));
       head.appendChild(v);
       head.appendChild(el('p', 'wp-note', 'Mix of demand, profit margin, trend and competition.'));
     } else {
@@ -286,6 +297,134 @@
     return n ? n.textContent.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
   }
 
+  // ---------- winner badge on every card ----------
+  function vlabel(v) { return v === 'Winning' ? 'Winner' : v === 'Worth testing' ? 'Maybe' : v === 'Risky' ? 'Skip' : (v || ''); }
+  function verdictByScore(n) { return n >= 70 ? 'Winning' : n >= 50 ? 'Worth testing' : 'Risky'; }
+  function clampN(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+  function setBadge(b, score, verdict, text) {
+    b.textContent = '';
+    b.className = 'wp-badge';
+    if (score == null) { b.appendChild(el('span', 'wp-pill', 'Not analysed yet')); return; }
+    b.appendChild(el('span', 'wp-pill ' + verdictClass(verdict), '\u2605 ' + vlabel(verdict) + ' \u00b7 ' + score));
+    if (text) b.appendChild(el('span', 'wp-note', text));
+  }
+  // Quick score from what the product card already shows (no server call): the card's own score,
+  // or a mix of orders sold / rating and the profit margin.
+  function quickScore(card, info) {
+    var t = card.textContent || '';
+    var m = /Score\s+(\d+)/.exec(t);
+    if (m) return clampN(parseInt(m[1], 10), 0, 100);
+    var demand = null, margin = null;
+    var sold = parseFloat(info.sold);
+    if (sold >= 0) {
+      var o = clampN((Math.log10(sold + 1) - 1) / 2.7 * 100, 0, 100);
+      var r = parseFloat(info.rating);
+      demand = r > 0 ? o * 0.75 + clampN((r - 3.8) / 1.1 * 100, 0, 100) * 0.25 : o;
+    }
+    var cost = parseFloat(info.cost), sm = /Sell ~\$([0-9]+(?:\.[0-9]+)?)/.exec(t), sell = sm ? parseFloat(sm[1]) : 0;
+    if (cost > 0 && sell > 0) {
+      var profit = sell - cost - 4 - (sell * 0.029 + 0.3) - sell * 0.2;
+      margin = clampN(profit / sell / 0.4 * 100, 0, 100);
+    }
+    if (demand != null && margin != null) return Math.round(demand * 0.5 + margin * 0.5);
+    if (demand != null) return Math.round(demand);
+    if (margin != null) return Math.round(margin);
+    return null;
+  }
+
+  // ---------- video cards: a video can show several products, so analyse every one of them ----------
+  var ID_RE = /(?:v=|youtu\.be\/|shorts\/)([A-Za-z0-9_-]{11})/;
+  function videoId(card) {
+    var a = card.querySelector('a[href*="youtu"]');
+    var m = a ? ID_RE.exec(a.getAttribute('href') || '') : null;
+    return m ? m[1] : '';
+  }
+  function getJson(url) {
+    return fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.json().catch(function () { return {}; }); });
+  }
+  function verdictClass(v) { return v === 'Winning' ? 'good' : v === 'Worth testing' ? 'mid' : 'bad'; }
+
+  function analyseVideo(card, out, finish) {
+    out.textContent = '';
+    var ld = el('div', 'wp-load');
+    ld.setAttribute('role', 'status');
+    ld.appendChild(el('span', 'wp-spin'));
+    ld.appendChild(el('div', '', 'Finding the products in this video… this can take up to 30 seconds.'));
+    out.appendChild(ld);
+    var fallback = videoName(card);
+
+    getJson('/api/research/identify?id=' + encodeURIComponent(videoId(card))).catch(function () { return {}; }).then(function (d) {
+      var list = ((d && d.products) || []).filter(function (p) { return p && p.product; });
+      if (!list.length && fallback) list = [{ product: fallback }];
+      out.textContent = '';
+      if (!list.length) {
+        out.appendChild(el('div', 'wp-err', (d && (d.error || d.reason)) || 'No product found in this video.'));
+        finish(false);
+        return;
+      }
+      var head = el('p', 'wp-note', list.length + ' product' + (list.length === 1 ? '' : 's') + ' found in this video. Analysing each one…');
+      head.style.marginTop = '0';
+      out.appendChild(head);
+      var rankBox = box('Best product in this video');
+      rankBox.hidden = true;
+      out.appendChild(rankBox);
+
+      var rows = list.map(function (p, i) {
+        var wrap = el('div', 'wp-prod');
+        var hb = el('button', 'wp-prodhead');
+        hb.type = 'button';
+        var nm = el('span', '', (i + 1) + '. ' + p.product + (p.brand ? ' (' + p.brand + ')' : ''));
+        var st = el('span', 'wp-pill', 'Waiting…');
+        hb.appendChild(nm); hb.appendChild(st);
+        var body = el('div', 'wp-prodbody');
+        body.hidden = true;
+        hb.onclick = function () { if (body.childNodes.length) body.hidden = !body.hidden; };
+        wrap.appendChild(hb); wrap.appendChild(body);
+        out.appendChild(wrap);
+        return { p: p, name: p.product, st: st, body: body, d: null };
+      });
+
+      function one(row) {
+        var p = row.p;
+        row.st.textContent = 'Analysing…';
+        var qs = 'q=' + encodeURIComponent(p.product);
+        if (p.direct && Number(p.cost) > 0 && p.aliUrl) qs += '&cost=' + encodeURIComponent(p.cost) + '&url=' + encodeURIComponent(p.aliUrl);
+        return getJson(API + '?' + qs).then(function (r) {
+          if (r.error || !r.product) { row.st.textContent = 'Could not analyse'; return; }
+          row.d = r;
+          render(row.body, r);
+          if (r.score != null) { row.st.textContent = r.score + ' · ' + vlabel(r.verdict); row.st.className = 'wp-pill ' + verdictClass(r.verdict); }
+          else row.st.textContent = 'See details';
+          if (rows.length === 1) row.body.hidden = false;
+        }).catch(function () { row.st.textContent = 'Could not analyse'; });
+      }
+
+      // two at a time, so it is quicker but still gentle on the YouTube and Gemini limits
+      var next = 0;
+      function worker() {
+        if (next >= rows.length) return Promise.resolve();
+        var row = rows[next++];
+        return one(row).then(worker);
+      }
+      Promise.all([worker(), worker()]).then(function () {
+        head.textContent = 'Tap a product to see its full analysis.';
+        var done = rows.filter(function (r) { return r.d && r.d.score != null; }).sort(function (a, b) { return b.d.score - a.d.score; });
+        if (rows.length > 1 && done.length) {
+          var ul = el('ul', 'wp-rank');
+          done.forEach(function (r, i) {
+            var li = el('li');
+            li.appendChild(el('span', '', (i === 0 ? '★ ' : '') + r.name));
+            li.appendChild(el('span', 'wp-pill ' + verdictClass(r.d.verdict), r.d.score + ' · ' + vlabel(r.d.verdict)));
+            ul.appendChild(li);
+          });
+          rankBox.appendChild(ul);
+          rankBox.hidden = false;
+        }
+        finish(rows.some(function (r) { return r.d; }), done[0] || null);
+      });
+    });
+  }
+
   function addButton(card, isVideo) {
     if (!isVideo && !cardInfo(card).name) return;
     card.style.flexWrap = 'wrap';
@@ -294,6 +433,10 @@
     var out = el('div', 'wp-out');
     out.hidden = true;
     var loaded = false;
+    var badge = el('div', 'wp-badge');
+    var q = isVideo ? null : quickScore(card, cardInfo(card));
+    if (q != null) setBadge(badge, q, verdictByScore(q), 'Quick score from the card. Tap Winning analysis for the full check.');
+    else setBadge(badge, null);
 
     btn.onclick = function () {
       if (loaded) { // toggle the result
@@ -301,13 +444,18 @@
         btn.textContent = out.hidden ? LABEL : 'Hide analysis';
         return;
       }
-      var info = isVideo ? { name: videoName(card) } : cardInfo(card);
-      if (!info.name) {
+      if (isVideo) {
+        btn.disabled = true;
+        btn.textContent = 'Analysing…';
         out.hidden = false;
-        out.textContent = '';
-        out.appendChild(el('div', 'wp-err', 'I need the product name first. Tap "Identify product" on this card, then try again.'));
+        analyseVideo(card, out, function (ok, best) {
+          btn.disabled = false;
+          if (best) setBadge(badge, best.d.score, best.d.verdict, 'Best product: ' + best.name);
+          if (ok) { loaded = true; btn.textContent = 'Hide analysis'; } else btn.textContent = LABEL;
+        });
         return;
       }
+      var info = cardInfo(card);
       btn.disabled = true;
       btn.textContent = 'Analysing…';
       out.hidden = false;
@@ -332,6 +480,7 @@
             return;
           }
           render(out, d);
+          if (d.score != null) setBadge(badge, d.score, d.verdict, 'Full analysis');
           loaded = true;
           btn.textContent = 'Hide analysis';
         })
@@ -342,6 +491,7 @@
           out.appendChild(el('div', 'wp-err', 'Could not load: ' + (e && e.message ? e.message : e)));
         });
     };
+    card.appendChild(badge);
     card.appendChild(btn);
     card.appendChild(out);
   }
