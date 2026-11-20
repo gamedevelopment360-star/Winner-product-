@@ -63,7 +63,23 @@
       '.wp-rank li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line);font-size:14px}',
       '.wp-rank li:first-child{border-top:0}',
       '.wp-badge{flex:0 0 100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}',
-      '.wp-badge .wp-note{margin:0}'
+      '.wp-badge .wp-note{margin:0}',
+      '.wp-out{container-type:inline-size;container-name:wp}',
+      '.wp-pill{white-space:nowrap;flex:none;line-height:1.3;text-align:center}',
+      '.wp-rank li{align-items:center}',
+      '.wp-rank li span:first-child{min-width:0;overflow-wrap:anywhere}',
+      '.wp-rank .wp-pill,.wp-prodhead .wp-pill{min-width:112px}',
+      '.wp-prodbody .wp-box{background:none;border:0;border-top:1px solid var(--line);border-radius:0;padding:12px 2px;margin-top:0}',
+      '.wp-prodbody .wp-box:first-child{border-top:0}',
+      '.wp-stat b{font-size:clamp(16px,4.6vw,19px)}',
+      '.wp-links a,.wp-links button{flex:1 1 150px}',
+      '.wp-prodhead:focus-visible,.wp-links a:focus-visible,.wp-links button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}',
+      '@media(hover:hover){.wp-prodhead:hover{background:rgba(255,255,255,.03)}.wp-links a:hover,.wp-links button:hover{border-color:var(--accent)}}',
+      '@media(max-width:340px){.wp-grid,.wp-calc{grid-template-columns:1fr}.wp-rank .wp-pill,.wp-prodhead .wp-pill{min-width:0}}',
+      '@media(min-width:600px){.wp-box{padding:14px}.wp-score{font-size:32px}}',
+      '@container wp (min-width:520px){.wp-grid,.wp-calc{grid-template-columns:repeat(3,1fr)}.wp-vids{grid-template-columns:repeat(2,1fr)}}',
+      '@container wp (min-width:820px){.wp-grid,.wp-calc{grid-template-columns:repeat(6,1fr)}}',
+      '@media(prefers-reduced-motion:reduce){.wp-spin{animation-duration:2.5s}}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(st);
   })();
@@ -128,14 +144,15 @@
       ['Supplier price ($)', 'cost', cost0],
       ['Shipping ($)', 'ship', dflt.shipping != null ? dflt.shipping : 4],
       ['Ads per sale ($)', 'ads', d.profit ? d.profit.ads : (sell0 * (dflt.adsPct || 20) / 100)],
-      ['Fees (%)', 'fee', dflt.feePct != null ? dflt.feePct : 2.9]
+      ['Fees (%)', 'fee', dflt.feePct != null ? dflt.feePct : 2.9],
+      ['Number of sales', 'qty', 10]
     ];
     var grid = el('div', 'wp-calc');
     var inp = {};
     fields.forEach(function (f) {
       var l = el('label', '', f[0]);
       var i = document.createElement('input');
-      i.type = 'number'; i.step = '0.01'; i.min = '0'; i.setAttribute('inputmode', 'decimal');
+      i.type = 'number'; i.step = f[1] === 'qty' ? '1' : '0.01'; i.min = '0'; i.setAttribute('inputmode', 'decimal');
       i.value = Number(f[2]) ? String(Math.round(f[2] * 100) / 100) : '';
       l.appendChild(i); grid.appendChild(l);
       inp[f[1]] = i;
@@ -148,7 +165,7 @@
     var fixed = dflt.feeFixed != null ? dflt.feeFixed : 0.3;
     function upd() {
       var s = parseFloat(inp.sell.value) || 0, co = parseFloat(inp.cost.value) || 0, sh = parseFloat(inp.ship.value) || 0;
-      var ad = parseFloat(inp.ads.value) || 0, fp = parseFloat(inp.fee.value) || 0;
+      var ad = parseFloat(inp.ads.value) || 0, fp = parseFloat(inp.fee.value) || 0, qty = parseFloat(inp.qty.value) || 0;
       if (!(s > 0) || !(co > 0)) { // do not show a fake loss while the prices are empty
         big.textContent = 'Enter the selling price and supplier price';
         big.className = 'big';
@@ -162,7 +179,7 @@
       big.textContent = money(p) + ' profit per sale';
       big.className = 'big ' + (p >= 0 ? 'pos' : 'neg');
       l1.textContent = 'Margin ' + (s > 0 ? (p / s * 100).toFixed(1) : '0.0') + '%  ·  Return on spend ' + (spend > 0 ? (p / spend * 100).toFixed(0) : '0') + '%';
-      l2.textContent = 'Fees ' + money(fees) + '  ·  Break-even ad cost ' + money(Math.max(0, s - co - sh - fees)) + '  ·  10 sales = ' + money(p * 10);
+      l2.textContent = 'Fees ' + money(fees) + '  ·  Break-even ad cost ' + money(Math.max(0, s - co - sh - fees)) + '  ·  ' + qty + ' sales = ' + money(p * qty);
     }
     Object.keys(inp).forEach(function (k) { inp[k].addEventListener('input', upd); });
     upd();
