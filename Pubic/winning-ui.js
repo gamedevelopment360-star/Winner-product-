@@ -79,6 +79,9 @@
       '@media(min-width:600px){.wp-box{padding:14px}.wp-score{font-size:32px}}',
       '@container wp (min-width:520px){.wp-grid,.wp-calc{grid-template-columns:repeat(3,1fr)}.wp-vids{grid-template-columns:repeat(2,1fr)}}',
       '@container wp (min-width:820px){.wp-grid,.wp-calc{grid-template-columns:repeat(6,1fr)}}',
+      '.wp-at{color:var(--mute);font-weight:500;font-size:12px}',
+      '.wp-more{width:100%;min-height:44px;margin-top:10px}',
+      '.wp-more:disabled{opacity:.7;cursor:progress}',
       '@media(prefers-reduced-motion:reduce){.wp-spin{animation-duration:2.5s}}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(st);
@@ -361,7 +364,11 @@
   }
   function verdictClass(v) { return v === 'Winning' ? 'good' : v === 'Worth testing' ? 'mid' : 'bad'; }
 
-  function analyseVideo(card, out, finish) {
+  // A video can name 20+ products. Each analysis uses YouTube and Gemini quota, so the first AUTO products
+  // are analysed right away and the rest only when the seller taps them (or taps "Analyse next 5").
+  var AUTO = 5, MAX = 40;
+
+  function analyseVideo(card, out, finish, onBest) {
     out.textContent = '';
     var ld = el('div', 'wp-load');
     ld.setAttribute('role', 'status');
@@ -371,7 +378,7 @@
     var fallback = videoName(card);
 
     getJson('/api/research/identify?id=' + encodeURIComponent(videoId(card))).catch(function () { return {}; }).then(function (d) {
-      var list = ((d && d.products) || []).filter(function (p) { return p && p.product; });
+      var list = ((d && d.products) || []).filter(function (p) { return p && p.product; }).slice(0, MAX);
       if (!list.length && fallback) list = [{ product: fallback }];
       out.textContent = '';
       if (!list.length) {
@@ -379,65 +386,114 @@
         finish(false);
         return;
       }
-      var head = el('p', 'wp-note', list.length + ' product' + (list.length === 1 ? '' : 's') + ' found in this video. Analysing each one…');
+      var n = list.length;
+      var head = el('p', 'wp-note', n + ' product' + (n === 1 ? '' : 's') + ' found in this video. ' +
+        (n > AUTO ? 'Analysing the first ' + AUTO + '. Tap any other product to analyse it.' : 'Analysing each one…'));
       head.style.marginTop = '0';
       out.appendChild(head);
       var rankBox = box('Best product in this video');
       rankBox.hidden = true;
       out.appendChild(rankBox);
+      var rankUl = null;
 
-      var rows = list.map(function (p, i) {
+      var rows = [];
+      var holder = el('div');
+      out.appendChild(holder);
+      list.forEach(function (p, i) {
+        var row = { p: p, name: p.product, d: null, busy: false, tried: false };
         var wrap = el('div', 'wp-prod');
         var hb = el('button', 'wp-prodhead');
         hb.type = 'button';
-        var nm = el('span', '', (i + 1) + '. ' + p.product + (p.brand ? ' (' + p.brand + ')' : ''));
-        var st = el('span', 'wp-pill', 'Waiting…');
-        hb.appendChild(nm); hb.appendChild(st);
-        var body = el('div', 'wp-prodbody');
-        body.hidden = true;
-        hb.onclick = function () { if (body.childNodes.length) body.hidden = !body.hidden; };
-        wrap.appendChild(hb); wrap.appendChild(body);
-        out.appendChild(wrap);
-        return { p: p, name: p.product, st: st, body: body, d: null };
+        row.st = el('span', 'wp-pill', i < AUTO ? 'Waiting…' : 'Tap to analyse');
+        var nameEl = el('span', '', (i + 1) + '. ' + p.product + (p.brand ? ' (' + p.brand + ')' : ''));
+        if (p.at) nameEl.appendChild(el('small', 'wp-at', ' \u00b7 ' + p.at)); // time in the video where it appears
+        hb.appendChild(nameEl);
+        hb.appendChild(row.st);
+        row.body = el('div', 'wp-prodbody');
+        row.body.hidden = true;
+        hb.onclick = function () {
+          if (row.d) row.body.hidden = !row.body.hidden;
+          else if (!row.busy) runRows([row], 1, true);
+        };
+        wrap.appendChild(hb); wrap.appendChild(row.body);
+        holder.appendChild(wrap);
+        rows.push(row);
       });
 
+      function sortedDone() {
+        return rows.filter(function (r) { return r.d && r.d.score != null; }).sort(function (a, b) { return b.d.score - a.d.score; });
+      }
+      function updateRank() {
+        var done = sortedDone();
+        if (rankUl && rankUl.parentNode) rankUl.parentNode.removeChild(rankUl);
+        rankUl = null;
+        if (rows.length > 1 && done.length) {
+          rankUl = el('ul', 'wp-rank');
+          done.forEach(function (r, i) {
+            var li = el('li');
+            li.appendChild(el('span', '', (i === 0 ? '★ ' : '') + r.name));
+            li.appendChild(el('span', 'wp-pill ' + verdictClass(r.d.verdict), r.d.score + ' · ' + vlabel(r.d.verdict)));
+            rankUl.appendChild(li);
+          });
+          rankBox.appendChild(rankUl);
+          rankBox.hidden = false;
+        }
+        if (onBest) onBest(done[0] || null);
+      }
+
       function one(row) {
-        var p = row.p;
+        row.busy = true;
+        row.tried = true;
+        row.st.className = 'wp-pill';
         row.st.textContent = 'Analysing…';
+        var p = row.p;
         var qs = 'q=' + encodeURIComponent(p.product);
         if (p.direct && Number(p.cost) > 0 && p.aliUrl) qs += '&cost=' + encodeURIComponent(p.cost) + '&url=' + encodeURIComponent(p.aliUrl);
         return getJson(API + '?' + qs).then(function (r) {
-          if (r.error || !r.product) { row.st.textContent = 'Could not analyse'; return; }
+          if (r.error || !r.product) { row.st.textContent = 'Failed · tap to retry'; return; }
           row.d = r;
           render(row.body, r);
           if (r.score != null) { row.st.textContent = r.score + ' · ' + vlabel(r.verdict); row.st.className = 'wp-pill ' + verdictClass(r.verdict); }
           else row.st.textContent = 'See details';
           if (rows.length === 1) row.body.hidden = false;
-        }).catch(function () { row.st.textContent = 'Could not analyse'; });
+        }).catch(function () { row.st.textContent = 'Failed · tap to retry'; })
+          .then(function () { row.busy = false; updateRank(); refreshMore(); });
       }
 
-      // two at a time, so it is quicker but still gentle on the YouTube and Gemini limits
-      var next = 0;
-      function worker() {
-        if (next >= rows.length) return Promise.resolve();
-        var row = rows[next++];
-        return one(row).then(worker);
-      }
-      Promise.all([worker(), worker()]).then(function () {
-        head.textContent = 'Tap a product to see its full analysis.';
-        var done = rows.filter(function (r) { return r.d && r.d.score != null; }).sort(function (a, b) { return b.d.score - a.d.score; });
-        if (rows.length > 1 && done.length) {
-          var ul = el('ul', 'wp-rank');
-          done.forEach(function (r, i) {
-            var li = el('li');
-            li.appendChild(el('span', '', (i === 0 ? '★ ' : '') + r.name));
-            li.appendChild(el('span', 'wp-pill ' + verdictClass(r.d.verdict), r.d.score + ' · ' + vlabel(r.d.verdict)));
-            ul.appendChild(li);
-          });
-          rankBox.appendChild(ul);
-          rankBox.hidden = false;
+      // run some rows, `lanes` at a time, so it is quicker but still gentle on the YouTube and Gemini limits
+      function runRows(todo, lanes, openAfter) {
+        var q = todo.slice();
+        function pump() {
+          var r = q.shift();
+          if (!r) return Promise.resolve();
+          return one(r).then(function () { if (openAfter && r.d) r.body.hidden = false; return pump(); });
         }
-        finish(rows.some(function (r) { return r.d; }), done[0] || null);
+        var ps = [];
+        for (var i = 0; i < Math.min(lanes, q.length); i++) ps.push(pump());
+        return Promise.all(ps);
+      }
+
+      var moreWrap = el('div');
+      var more = el('button', 'btn alt wp-more');
+      more.type = 'button';
+      var moreNote = el('p', 'wp-note', 'Each product uses some of your YouTube and Gemini limit.');
+      moreWrap.appendChild(more); moreWrap.appendChild(moreNote);
+      out.appendChild(moreWrap);
+      function untried() { return rows.filter(function (r) { return !r.tried; }); }
+      function refreshMore() {
+        var left = untried().length;
+        moreWrap.hidden = left === 0;
+        more.textContent = 'Analyse next ' + Math.min(AUTO, left) + ' (' + left + ' left)';
+      }
+      more.onclick = function () {
+        more.disabled = true;
+        runRows(untried().slice(0, AUTO), 2, false).then(function () { more.disabled = false; refreshMore(); });
+      };
+      refreshMore();
+
+      runRows(rows.slice(0, AUTO), 2, false).then(function () {
+        head.textContent = n > AUTO ? 'Tap a product to see its full analysis, or tap a grey one to analyse it.' : 'Tap a product to see its full analysis.';
+        finish(rows.some(function (r) { return r.d; }), sortedDone()[0] || null);
       });
     });
   }
@@ -465,10 +521,11 @@
         btn.disabled = true;
         btn.textContent = 'Analysing…';
         out.hidden = false;
-        analyseVideo(card, out, function (ok, best) {
+        analyseVideo(card, out, function (ok) {
           btn.disabled = false;
-          if (best) setBadge(badge, best.d.score, best.d.verdict, 'Best product: ' + best.name);
           if (ok) { loaded = true; btn.textContent = 'Hide analysis'; } else btn.textContent = LABEL;
+        }, function (best) {
+          if (best) setBadge(badge, best.d.score, best.d.verdict, 'Best product: ' + best.name);
         });
         return;
       }
