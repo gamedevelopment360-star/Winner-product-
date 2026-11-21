@@ -469,20 +469,12 @@ $('#closeNav').onclick = () => setNav(false);
 $('#scrim').onclick = () => setNav(false);
 
 // dashboard
-// Saved videos kept on this phone. Trending videos are saved here every time you tap Trending Products.
-const SV_KEY = 'wf_saved_videos';
-function localVideos() { try { const a = JSON.parse(localStorage.getItem(SV_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+// Saved videos live on the server, per account (the server saves them every time you tap Trending Products).
 function mergeVideos(lists, max) {
   const seen = new Set(), out = [];
   for (const l of lists) for (const v of (l || [])) { const k = v && (v.id || v.url); if (!k || seen.has(k)) continue; seen.add(k); out.push(v); if (out.length >= max) return out; }
   return out;
 }
-function saveTrending(vids) {
-  const out = mergeVideos([vids, localVideos()], 500); // newest first, no repeats, at most 500
-  try { localStorage.setItem(SV_KEY, JSON.stringify(out)); } catch (e) {}
-  return out.length;
-}
-function videoCount() { try { return parseInt(localStorage.getItem('wf_videos'), 10) || 0; } catch (e) { return 0; } }
 let dashList = [];
 async function loadDash() {
   // Everything is fetched at the same time and shown at the same moment (no number appears before the others).
@@ -510,7 +502,7 @@ async function loadDash() {
     list($('#dTop'), dashList, 'No saved products yet. Products you search for or open from Winning Products are saved here.');
     $('#dCopyRow').hidden = !dashList.length;
   }
-  const v = mergeVideos([mine.error ? [] : (mine.videos || []), localVideos()], 1000);
+  const v = mergeVideos([mine.error ? [] : (mine.videos || [])], 1000);
   if (mine.error && !v.length) { $('#dVid').className = 'msg err'; $('#dVid').textContent = 'Could not load saved videos: ' + mine.error.message; }
   else videos($('#dVid'), v);
   $('#sSaved').textContent = num(saved.error ? 0 : dashList.length);
@@ -586,12 +578,9 @@ $('#ytGo').onclick = async () => {
     if (sp) sp.classList.add('done');
     await new Promise((r) => setTimeout(r, 700));
     videos(el, j.videos);
-    const savedN = saveTrending(j.videos); // keep these videos in Dashboard > Videos saved
     const info = document.createElement('p'); info.className = 'msg';
-    info.textContent = (j.videos || []).length + ' products from the last ' + (j.days || 60) + ' days · saved to Dashboard (' + savedN + ' videos saved)' + (j.note ? ' · ' + j.note : '');
+    info.textContent = (j.videos || []).length + ' products from the last ' + (j.days || 60) + ' days · saved to your Dashboard' + (j.note ? ' · ' + j.note : '');
     el.prepend(info);
-    try { localStorage.setItem('wf_videos', (j.videos || []).length); } catch (e) {}
-    $('#sVideos').textContent = num(savedN);
   } catch (e) { el.className = 'msg err'; el.textContent = e.message; }
   finally { clearInterval(tick); btn.disabled = false; }
 };
@@ -655,7 +644,20 @@ async function postJson(url, body) {
   if (!r.ok) throw new Error(j.error || 'Something went wrong (' + r.status + ')');
   return j;
 }
+// The browser keeps its own copies of saved videos, search history and notifications. They belong to the browser, not to an
+// account, so when a different person signs in here the old person's copies are cleared (once), then the page reloads clean.
+function switchOwner() {
+  if (!me.loggedIn || !me.email) return false;
+  const mine = String(me.email).toLowerCase();
+  try {
+    if (localStorage.getItem('wf_owner') === mine) return false;
+    ['wf_saved_videos', 'wf_videos', 'wf_hist', 'wf_notifs'].forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem('wf_owner', mine);
+  } catch (e) { return false; }
+  return true;
+}
 function renderAccount() {
+  if (switchOwner()) { location.reload(); return; }
   if (me.billing && !me.loggedIn) { location.href = '/login.html'; return; } // payments are on: sign in with Google first
   const locked = !!(me.billing && (!me.loggedIn || !me.subscribed));
   if (locked && me.loggedIn && !/[?&]paid=/.test(location.search)) { location.href = '/#pricing'; return; } // back to the pricing section: they tap Start now
