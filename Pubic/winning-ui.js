@@ -498,9 +498,18 @@
     });
   }
 
+  // Keeps each card's button and analysis alive while the seller visits other pages (lists are drawn again on every visit).
+  var KEEP = window.__wfKeepWin = window.__wfKeepWin || {};
+  function keepKey(card, isVideo) {
+    if (isVideo) return 'v:' + videoId(card);
+    var i = cardInfo(card);
+    return 'p:' + i.name + '|' + (i.url || '');
+  }
   function addButton(card, isVideo) {
     if (!isVideo && !cardInfo(card).name) return;
     card.style.flexWrap = 'wrap';
+    var key = keepKey(card, isVideo);
+    if (KEEP[key]) { KEEP[key].forEach(function (n) { card.appendChild(n); }); return; }
     var btn = el('button', 'btn alt wpbtn', LABEL);
     btn.type = 'button';
     var out = el('div', 'wp-out');
@@ -568,6 +577,7 @@
     card.appendChild(badge);
     card.appendChild(btn);
     card.appendChild(out);
+    KEEP[key] = [badge, btn, out];
   }
 
   // Product cards are drawn again every time a list loads, so look for new ones.

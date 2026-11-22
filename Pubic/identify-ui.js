@@ -728,10 +728,14 @@ body .idtoast span.idtx{font-size:12px}
     out.appendChild(box);
   }
 
+  // Keeps each video's buttons and results alive while the seller visits other pages.
+  // The lists are drawn again on every visit, so the old nodes (still being filled by a running request) are moved into the new card.
+  var KEEP = window.__wfKeepId = window.__wfKeepId || {};
   function addButton(card, id) {
     // The button and the result sit on their own full-width row under the thumbnail and the title.
     var holder = card;
     holder.style.flexWrap = 'wrap';
+    if (KEEP[id]) { KEEP[id].forEach(function (n) { holder.appendChild(n); }); return; }
     var btn = document.createElement('button');
     btn.className = 'btn idbtn';
     btn.type = 'button';
@@ -810,6 +814,7 @@ body .idtoast span.idtx{font-size:12px}
     holder.appendChild(cbtn);
     holder.appendChild(out);
     holder.appendChild(cout);
+    KEEP[id] = [btn, cbtn, out, cout];
   }
 
   function scan() {
