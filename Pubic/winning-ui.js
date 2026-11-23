@@ -209,7 +209,7 @@
     var g = el('div', 'wp-grid');
     var cost = d.supplier && d.supplier.cost;
     var est = !!(d.supplier && d.supplier.estimated);
-    g.appendChild(stat('Supplier price', cost ? (est ? '~' : '') + money(cost) : 'Not found', est ? 'AI estimate. Open the link to check' : d.supplier && d.supplier.direct ? 'From the supplier' : 'Open the link to check'));
+    g.appendChild(stat('Supplier price', cost ? (est ? '~' : '') + money(cost) : 'Not found', d.supplier && d.supplier.limited ? 'AliExpress limit reached' + (est ? '. AI estimate' : '') : est ? 'AI estimate. Open the link to check' : d.supplier && d.supplier.direct ? 'From the supplier' : 'Open the link to check'));
     g.appendChild(stat('Selling price', d.sell ? (est ? '~' : '') + money(d.sell) : '-', d.sellWhy || (d.sell ? (est ? 'Estimated' : 'Suggested by rule') : 'Type your own in the calculator')));
     g.appendChild(stat('Profit per sale', d.profit ? money(d.profit.profit) : '-', d.profit ? d.profit.margin + '% margin after shipping, fees and ads' : 'Needs a supplier price'));
     if (d.demand) {
@@ -231,6 +231,7 @@
     out.appendChild(calculator(d));
 
     var sup = box('Supplier');
+    if (d.supplier && d.supplier.limited) sup.appendChild(el('div', 'wp-err', 'AliExpress limit reached. The real supplier price is not available right now. Try again later.'));
     var sl = el('div', 'wp-links');
     sl.appendChild(anchor(d.supplier.direct ? 'Buy from supplier' : 'Search on AliExpress', d.supplier.url, 'main'));
     sl.appendChild(copyButton('Copy supplier link', function () { return d.supplier.url; }));
