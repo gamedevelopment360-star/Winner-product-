@@ -106,9 +106,11 @@ async function resolveAli(name) {
   if (!q) return { status: 'none' };
   const k = 'ali1:' + q.toLowerCase();
   const hit = await getCache(k, ALI_TTL);
-  if (hit && hit.status) return hit; // older answers may have no cost: the direct link still works
+  // answers saved by an older version have no 'priced' mark and may be missing the real price: look them up once more
+  if (hit && hit.status && (hit.priced || hit.status !== 'ok')) return hit;
   if (aliBusy.has(k)) return aliBusy.get(k); // two people asking for the same name at once: one lookup
   const p = aliLookup(q).then(async (r) => {
+    if (r.status === 'ok') r.priced = true;
     if (r.status === 'ok' || r.status === 'none') await setCache(k, r); // never remember errors
     return r;
   }).finally(() => aliBusy.delete(k));
