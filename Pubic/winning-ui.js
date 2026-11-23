@@ -17,6 +17,13 @@
       '.wp-spin{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--accent);animation:wpspin .8s linear infinite}',
       '@keyframes wpspin{to{transform:rotate(360deg)}}',
       '.wp-err{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,92,92,.45);background:rgba(255,92,92,.08);font-size:13px}',
+      '.wp-limit{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid rgba(255,92,92,.5);background:linear-gradient(180deg,rgba(255,92,92,.14),rgba(255,92,92,.06))}',
+      '.wp-limit-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(255,92,92,.2);color:#ff7b7b;font-weight:800;font-size:16px;line-height:1}',
+      '.wp-limit-tx{min-width:0;flex:1 1 auto}',
+      '.wp-limit-tx b{display:block;font-size:clamp(14px,3.8vw,16px);line-height:1.25;color:#ffb3b3;margin-bottom:3px}',
+      '.wp-limit-tx span{display:block;font-size:clamp(12.5px,3.4vw,14px);line-height:1.45;color:var(--text);opacity:.9;overflow-wrap:anywhere}',
+      '@media(max-width:340px){.wp-limit{padding:10px;gap:10px}.wp-limit-ic{width:24px;height:24px;font-size:14px}}',
+      '@container wp (min-width:520px){.wp-limit{align-items:center;padding:14px 18px;gap:14px}.wp-limit-ic{width:34px;height:34px;font-size:19px}}',
       '.wp-box{background:#12161d;border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:10px;min-width:0}',
       '.wp-box h4{margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--mute)}',
       '.wp-verdict{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
@@ -209,7 +216,7 @@
     var g = el('div', 'wp-grid');
     var cost = d.supplier && d.supplier.cost;
     var est = !!(d.supplier && d.supplier.estimated);
-    g.appendChild(stat('Supplier price', cost ? (est ? '~' : '') + money(cost) : 'Not found', d.supplier && d.supplier.limited ? 'AliExpress limit reached' + (est ? '. AI estimate' : '') : est ? 'AI estimate. Open the link to check' : d.supplier && d.supplier.direct ? 'From the supplier' : 'Open the link to check'));
+    g.appendChild(stat('Supplier price', cost ? (est ? '~' : '') + money(cost) : 'Not found', est ? 'AI estimate. Open the link to check' : d.supplier && d.supplier.direct ? 'From the supplier' : 'Open the link to check'));
     g.appendChild(stat('Selling price', d.sell ? (est ? '~' : '') + money(d.sell) : '-', d.sellWhy || (d.sell ? (est ? 'Estimated' : 'Suggested by rule') : 'Type your own in the calculator')));
     g.appendChild(stat('Profit per sale', d.profit ? money(d.profit.profit) : '-', d.profit ? d.profit.margin + '% margin after shipping, fees and ads' : 'Needs a supplier price'));
     if (d.demand) {
@@ -231,7 +238,16 @@
     out.appendChild(calculator(d));
 
     var sup = box('Supplier');
-    if (d.supplier && d.supplier.limited) sup.appendChild(el('div', 'wp-err', 'AliExpress limit reached. The real supplier price is not available right now. Try again later.'));
+    if (d.supplier && d.supplier.limited) {
+      var lim = el('div', 'wp-limit');
+      lim.setAttribute('role', 'alert');
+      lim.appendChild(el('div', 'wp-limit-ic', '!'));
+      var lt = el('div', 'wp-limit-tx');
+      lt.appendChild(el('b', '', 'AliExpress limit reached'));
+      lt.appendChild(el('span', '', 'The real supplier price is not available right now. Try again later.'));
+      lim.appendChild(lt);
+      sup.appendChild(lim);
+    }
     var sl = el('div', 'wp-links');
     sl.appendChild(anchor(d.supplier.direct ? 'Buy from supplier' : 'Search on AliExpress', d.supplier.url, 'main'));
     sl.appendChild(copyButton('Copy supplier link', function () { return d.supplier.url; }));
@@ -278,7 +294,10 @@
     } else ds.appendChild(el('p', 'wp-note', 'The AI could not write a description this time. Try again in a minute.'));
     out.appendChild(ds);
 
-    (d.notes || []).forEach(function (n) { out.appendChild(el('p', 'wp-note', n)); });
+    (d.notes || []).forEach(function (n) {
+      if (d.supplier && d.supplier.limited && /AliExpress limit reached|switched off/i.test(n)) return; // the red Supplier box already says it
+      out.appendChild(el('p', 'wp-note', n));
+    });
   }
 
   // ---------- one button per product card ----------
@@ -361,7 +380,12 @@
     return m ? m[1] : '';
   }
   function getJson(url) {
-    return fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.json().catch(function () { return {}; }); });
+    // give up after 70 seconds so a stuck request never leaves "Analysing…" on the screen forever
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = ctl ? setTimeout(function () { ctl.abort(); }, 70000) : null;
+    return fetch(url, { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { return r.json().catch(function () { return {}; }); })
+      .then(function (j) { if (t) clearTimeout(t); return j; }, function (e) { if (t) clearTimeout(t); throw e; });
   }
   function verdictClass(v) { return v === 'Winning' ? 'good' : v === 'Worth testing' ? 'mid' : 'bad'; }
 
@@ -413,8 +437,9 @@
         row.body = el('div', 'wp-prodbody');
         row.body.hidden = true;
         hb.onclick = function () {
-          if (row.d) row.body.hidden = !row.body.hidden;
-          else if (!row.busy) runRows([row], 1, true);
+          if (row.d && row.d.supplier && row.d.supplier.limited && !row.busy) { row.d = null; limited = false; runRows([row], 1, true); }
+          else if (row.d) row.body.hidden = !row.body.hidden;
+          else if (!row.busy) { limited = false; runRows([row], 1, true); }
         };
         wrap.appendChild(hb); wrap.appendChild(row.body);
         holder.appendChild(wrap);
@@ -442,7 +467,9 @@
         if (onBest) onBest(done[0] || null);
       }
 
+      var limited = false; // AliExpress limit reached: stop sending more products until the seller taps again
       function one(row) {
+        if (limited && !row.manual) { row.tried = false; row.st.className = 'wp-pill bad'; row.st.textContent = 'Limit reached · tap to retry'; return Promise.resolve(); }
         row.busy = true;
         row.tried = true;
         row.st.className = 'wp-pill';
@@ -453,6 +480,15 @@
         return getJson(API + '?' + qs).then(function (r) {
           if (r.error || !r.product) { row.st.textContent = 'Failed · tap to retry'; return; }
           row.d = r;
+          if (r.supplier && r.supplier.limited) {
+            limited = true;
+            render(row.body, r);
+            row.st.className = 'wp-pill bad';
+            row.st.textContent = 'Limit reached';
+            if (rows.length === 1) row.body.hidden = false;
+            return;
+          }
+          limited = false;
           render(row.body, r);
           if (r.score != null) { row.st.textContent = r.score + ' · ' + vlabel(r.verdict); row.st.className = 'wp-pill ' + verdictClass(r.verdict); }
           else row.st.textContent = 'See details';
@@ -464,6 +500,7 @@
       // run some rows, `lanes` at a time, so it is quicker but still gentle on the YouTube and Gemini limits
       function runRows(todo, lanes, openAfter) {
         var q = todo.slice();
+        todo.forEach(function (r) { r.tried = true; r.manual = !!openAfter; });
         function pump() {
           var r = q.shift();
           if (!r) return Promise.resolve();
@@ -490,9 +527,9 @@
         more.disabled = true;
         runRows(untried().slice(0, AUTO), 2, false).then(function () { more.disabled = false; refreshMore(); });
       };
+      var firstRun = runRows(rows.slice(0, AUTO), 2, false);
       refreshMore();
-
-      runRows(rows.slice(0, AUTO), 2, false).then(function () {
+      firstRun.then(function () {
         head.textContent = n > AUTO ? 'Tap a product to see its full analysis, or tap a grey one to analyse it.' : 'Tap a product to see its full analysis.';
         finish(rows.some(function (r) { return r.d; }), sortedDone()[0] || null);
       });
