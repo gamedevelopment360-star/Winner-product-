@@ -17,10 +17,10 @@
       '.wp-spin{flex:none;width:18px;height:18px;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--accent);animation:wpspin .8s linear infinite}',
       '@keyframes wpspin{to{transform:rotate(360deg)}}',
       '.wp-err{padding:10px 12px;border-radius:12px;border:1px solid rgba(255,92,92,.45);background:rgba(255,92,92,.08);font-size:13px}',
-      '.wp-limit{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid rgba(241,196,15,.4);background:rgba(241,196,15,.08)}',
-      '.wp-limit-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(241,196,15,.18);color:#f1c40f;font-weight:800;font-size:16px;line-height:1}',
+      '.wp-limit{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;margin:0 0 12px;border-radius:12px;border:1px solid rgba(255,92,92,.5);background:linear-gradient(180deg,rgba(255,92,92,.14),rgba(255,92,92,.06))}',
+      '.wp-limit-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(255,92,92,.2);color:#ff7b7b;font-weight:800;font-size:16px;line-height:1}',
       '.wp-limit-tx{min-width:0;flex:1 1 auto}',
-      '.wp-limit-tx b{display:block;font-size:clamp(14px,3.8vw,16px);line-height:1.25;color:#f5d66b;margin-bottom:3px}',
+      '.wp-limit-tx b{display:block;font-size:clamp(14px,3.8vw,16px);line-height:1.25;color:#ffb3b3;margin-bottom:3px}',
       '.wp-limit-tx span{display:block;font-size:clamp(12.5px,3.4vw,14px);line-height:1.45;color:var(--text);opacity:.9;overflow-wrap:anywhere}',
       '@media(max-width:340px){.wp-limit{padding:10px;gap:10px}.wp-limit-ic{width:24px;height:24px;font-size:14px}}',
       '@container wp (min-width:520px){.wp-limit{align-items:center;padding:14px 18px;gap:14px}.wp-limit-ic{width:34px;height:34px;font-size:19px}}',
@@ -89,15 +89,7 @@
       '.wp-at{color:var(--mute);font-weight:500;font-size:12px}',
       '.wp-more{width:100%;min-height:44px;margin-top:10px}',
       '.wp-more:disabled{opacity:.7;cursor:progress}',
-      '@media(prefers-reduced-motion:reduce){.wp-spin{animation-duration:2.5s}}',
-      '.wp-box .wp-limit{margin:0 0 14px}',
-      '.wp-limit + .wp-links{margin-top:0}',
-      '.wp-res .big.hint{font-size:15px;font-weight:700;line-height:1.3;color:var(--text)}',
-      '.wp-sup-limited .wp-links a.main{background:var(--panel-2);border-color:var(--accent);color:var(--text)}',
-      '.wp-adlinks{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}',
-      '.wp-adlinks a{min-height:40px;padding:6px 4px;font-size:12px;line-height:1.2;text-align:center;flex:none}',
-      '.wp-note,.wp-stat span,.wp-stat small,.wp-box h4{color:#a3aebf}',
-      '@media(max-width:340px){.wp-adlinks{grid-template-columns:1fr}}'
+      '@media(prefers-reduced-motion:reduce){.wp-spin{animation-duration:2.5s}}'
     ].join('\n');
     (document.head || document.documentElement).appendChild(st);
   })();
@@ -185,8 +177,8 @@
       var s = parseFloat(inp.sell.value) || 0, co = parseFloat(inp.cost.value) || 0, sh = parseFloat(inp.ship.value) || 0;
       var ad = parseFloat(inp.ads.value) || 0, fp = parseFloat(inp.fee.value) || 0, qty = parseFloat(inp.qty.value) || 0;
       if (!(s > 0) || !(co > 0)) { // do not show a fake loss while the prices are empty
-        big.textContent = (d.supplier && d.supplier.limited) ? 'Type the supplier price to see profit' : 'Enter the selling price and supplier price';
-        big.className = 'big hint';
+        big.textContent = 'Enter the selling price and supplier price';
+        big.className = 'big';
         l1.textContent = 'Your profit per sale will show here.';
         l2.textContent = '';
         return;
@@ -246,14 +238,13 @@
     out.appendChild(calculator(d));
 
     var sup = box('Supplier');
-    if (d.supplier && d.supplier.limited) sup.className += ' wp-sup-limited';
     if (d.supplier && d.supplier.limited) {
       var lim = el('div', 'wp-limit');
       lim.setAttribute('role', 'alert');
       lim.appendChild(el('div', 'wp-limit-ic', '!'));
       var lt = el('div', 'wp-limit-tx');
       lt.appendChild(el('b', '', 'AliExpress limit reached'));
-      lt.appendChild(el('span', '', 'Real price unavailable right now. Type it yourself above, or try again later.'));
+      lt.appendChild(el('span', '', 'The real supplier price is not available right now. Try again later.'));
       lim.appendChild(lt);
       sup.appendChild(lim);
     }
@@ -264,7 +255,7 @@
     out.appendChild(sup);
 
     var ad = box('Ad examples');
-    var al = el('div', 'wp-links wp-adlinks');
+    var al = el('div', 'wp-links');
     ((d.ads && d.ads.links) || []).forEach(function (l) { al.appendChild(anchor(l.name, l.url)); });
     ad.appendChild(al);
     if (d.ads && d.ads.videos && d.ads.videos.length) {
