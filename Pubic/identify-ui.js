@@ -160,6 +160,14 @@ body .idtoast span.idtx{font-size:12px}
 .idcitem small{color:var(--mute);font-size:12px}
 .idcnote{margin:8px 0 0;font-size:12px;color:var(--mute)}
 .idcnone{margin-top:10px;font-size:13px;color:var(--mute)}
+/* AliExpress limit box */
+.idlimit{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;margin:12px 0 0;border-radius:12px;border:1px solid rgba(255,92,92,.5);background:linear-gradient(180deg,rgba(255,92,92,.14),rgba(255,92,92,.06))}
+.idlimit-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:rgba(255,92,92,.2);color:#ff7b7b;font-weight:800;font-size:16px;line-height:1}
+.idlimit-tx{min-width:0;flex:1 1 auto}
+.idlimit-tx b{display:block;font-size:clamp(14px,3.8vw,16px);line-height:1.25;color:#ffb3b3;margin-bottom:3px}
+.idlimit-tx span{display:block;font-size:clamp(12.5px,3.4vw,14px);line-height:1.45;color:var(--text);opacity:.9;overflow-wrap:anywhere}
+@media(max-width:340px){.idlimit{padding:10px;gap:10px}.idlimit-ic{width:24px;height:24px;font-size:14px}}
+@media(min-width:520px){.idlimit{align-items:center;padding:14px 18px;gap:14px}.idlimit-ic{width:34px;height:34px;font-size:19px}}
 `;
     (document.head || document.documentElement).appendChild(st);
   })();
@@ -530,9 +538,8 @@ body .idtoast span.idtx{font-size:12px}
     var m = String(msg || '');
     var shown, detail = '';
     if (/429|quota|exceeded/i.test(m)) {
-      t.textContent = 'AliExpress lookup limit reached';
-      shown = 'The monthly RapidAPI limit is used up. It works again when the limit resets or after you upgrade the plan.';
-      detail = m;
+      t.textContent = 'AliExpress limit reached';
+      shown = 'The real supplier price is not available right now.';
     } else {
       t.textContent = 'No product to show';
       shown = m || 'No physical product found in this video.';
@@ -637,9 +644,8 @@ body .idtoast span.idtx{font-size:12px}
         var ln = document.createElement('p');
         ln.className = 'idpnote';
         ln.textContent = isLimitText(d.lookupNote)
-          ? 'You have reached your AliExpress lookup limit (RapidAPI monthly plan). Links open a search page until it resets or you upgrade the plan.'
+          ? 'AliExpress limit reached. Real prices are not available right now. Links open an AliExpress search.'
           : d.lookupNote;
-        ln.title = String(d.lookupNote || '');
         box.appendChild(ln);
       }
       return;
@@ -673,11 +679,41 @@ body .idtoast span.idtx{font-size:12px}
       box.appendChild(pn);
     }
 
-    if (d.reason) {
+    // the server adds the AliExpress lookup message to the reason; show it as its own clean box instead of raw text
+    var reasonText = String(d.reason || '');
+    if (d.lookupNote && reasonText.indexOf(d.lookupNote) >= 0) reasonText = reasonText.replace(d.lookupNote, '');
+    reasonText = reasonText.replace(/AliExpress (lookup failed|limit reached)[\s\S]*$/i, '').replace(/\s+/g, ' ').trim();
+    if (reasonText) {
       var r = document.createElement('p');
       r.className = 'idreason';
-      r.textContent = d.reason;
+      r.textContent = reasonText;
       box.appendChild(r);
+    }
+    if (d.lookupNote) {
+      if (isLimitText(d.lookupNote)) {
+        var lim = document.createElement('div');
+        lim.className = 'idlimit';
+        lim.setAttribute('role', 'alert');
+        var ic = document.createElement('div');
+        ic.className = 'idlimit-ic';
+        ic.textContent = '!';
+        var tx = document.createElement('div');
+        tx.className = 'idlimit-tx';
+        var lt = document.createElement('b');
+        lt.textContent = 'AliExpress limit reached';
+        var ls = document.createElement('span');
+        ls.textContent = 'The real supplier price is not available right now. The link opens an AliExpress search.';
+        tx.appendChild(lt);
+        tx.appendChild(ls);
+        lim.appendChild(ic);
+        lim.appendChild(tx);
+        box.appendChild(lim);
+      } else {
+        var ln2 = document.createElement('p');
+        ln2.className = 'idpnote';
+        ln2.textContent = d.lookupNote;
+        box.appendChild(ln2);
+      }
     }
     var act = document.createElement('div');
     act.className = 'idactions';
