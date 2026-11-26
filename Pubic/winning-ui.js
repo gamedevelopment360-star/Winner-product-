@@ -45,6 +45,8 @@
       '.wp-calc input{width:100%;min-width:0;margin-top:4px}',
       '.wp-res{margin-top:10px;padding:10px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}',
       '.wp-res .big{font-size:20px;font-weight:800}',
+      '.wp-res .big.empty{font-size:clamp(14px,3.8vw,16px);font-weight:700;line-height:1.3}',
+      '.wp-res .big.empty+p{margin-top:2px}',
       '.wp-res .big.pos{color:#2ecc71}.wp-res .big.neg{color:#ff5c5c}',
       '.wp-res p{margin:4px 0 0;font-size:12px;color:var(--mute)}',
       '.wp-links{display:flex;gap:8px;flex-wrap:wrap}',
@@ -178,7 +180,7 @@
       var ad = parseFloat(inp.ads.value) || 0, fp = parseFloat(inp.fee.value) || 0, qty = parseFloat(inp.qty.value) || 0;
       if (!(s > 0) || !(co > 0)) { // do not show a fake loss while the prices are empty
         big.textContent = 'Enter the selling price and supplier price';
-        big.className = 'big';
+        big.className = 'big empty';
         l1.textContent = 'Your profit per sale will show here.';
         l2.textContent = '';
         return;
@@ -243,13 +245,13 @@
       lim.setAttribute('role', 'alert');
       lim.appendChild(el('div', 'wp-limit-ic', '!'));
       var lt = el('div', 'wp-limit-tx');
-      lt.appendChild(el('b', '', 'AliExpress limit reached'));
+      lt.appendChild(el('b', '', 'Limit reached'));
       lt.appendChild(el('span', '', 'The real supplier price is not available right now. Try again later.'));
       lim.appendChild(lt);
       sup.appendChild(lim);
     }
     var sl = el('div', 'wp-links');
-    sl.appendChild(anchor(d.supplier.direct ? 'Buy from supplier' : 'Search on AliExpress', d.supplier.url, 'main'));
+    sl.appendChild(anchor(d.supplier.direct ? 'Buy from supplier' : 'Search for supplier', d.supplier.url, 'main'));
     sl.appendChild(copyButton('Copy supplier link', function () { return d.supplier.url; }));
     sup.appendChild(sl);
     out.appendChild(sup);
@@ -295,8 +297,8 @@
     out.appendChild(ds);
 
     (d.notes || []).forEach(function (n) {
-      if (d.supplier && d.supplier.limited && /AliExpress limit reached|switched off/i.test(n)) return; // the red Supplier box already says it
-      out.appendChild(el('p', 'wp-note', n));
+      if (d.supplier && d.supplier.limited && /(AliExpress )?limit reached|switched off/i.test(n)) return; // the red Supplier box already says it
+      out.appendChild(el('p', 'wp-note', String(n).replace(/AliExpress\s*/gi, '')));
     });
   }
 

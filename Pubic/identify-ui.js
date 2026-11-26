@@ -538,7 +538,7 @@ body .idtoast span.idtx{font-size:12px}
     var m = String(msg || '');
     var shown, detail = '';
     if (/429|quota|exceeded/i.test(m)) {
-      t.textContent = 'AliExpress limit reached';
+      t.textContent = 'Limit reached';
       shown = 'The real supplier price is not available right now.';
     } else {
       t.textContent = 'No product to show';
@@ -624,15 +624,15 @@ body .idtoast span.idtx{font-size:12px}
         if (Number(p.cost) > 0) {
           rp.textContent = 'Cost ' + money(p.cost) + (Number(p.sell) > 0 ? ' \u00b7 Sell ~' + money(p.sell) : '');
         } else if (p.lookup !== 'ok' && isLimitText(d.lookupNote)) {
-          rp.textContent = 'Limit reached, opens an AliExpress search';
+          rp.textContent = 'Limit reached, opens a search';
         } else if (p.lookup === 'none') {
-          rp.textContent = 'No close match on AliExpress, opens a search';
+          rp.textContent = 'No close match, opens a search';
         } else if (p.lookup === 'error') {
-          rp.textContent = 'AliExpress lookup failed, opens a search';
+          rp.textContent = 'Lookup failed, opens a search';
         } else if (p.lookup === 'nokey') {
-          rp.textContent = 'AliExpress lookup is not set up, opens a search';
+          rp.textContent = 'Price lookup is not set up, opens a search';
         } else {
-          rp.textContent = 'Opens an AliExpress search';
+          rp.textContent = 'Opens a search';
         }
         info.appendChild(rp);
         t.appendChild(info);
@@ -644,7 +644,7 @@ body .idtoast span.idtx{font-size:12px}
         var ln = document.createElement('p');
         ln.className = 'idpnote';
         ln.textContent = isLimitText(d.lookupNote)
-          ? 'AliExpress limit reached. Real prices are not available right now. Links open a search.'
+          ? 'Limit reached. Real prices are not available right now. Links open a search.'
           : d.lookupNote;
         box.appendChild(ln);
       }
@@ -682,7 +682,7 @@ body .idtoast span.idtx{font-size:12px}
     // the server adds the AliExpress lookup message to the reason; show it as its own clean box instead of raw text
     var reasonText = String(d.reason || '');
     if (d.lookupNote && reasonText.indexOf(d.lookupNote) >= 0) reasonText = reasonText.replace(d.lookupNote, '');
-    reasonText = reasonText.replace(/AliExpress (lookup failed|limit reached)[\s\S]*$/i, '').replace(/\s+/g, ' ').trim();
+    reasonText = reasonText.replace(/(AliExpress )?(lookup failed|limit reached)[\s\S]*$/i, '').replace(/\s+/g, ' ').trim();
     if (reasonText) {
       var r = document.createElement('p');
       r.className = 'idreason';
@@ -700,7 +700,7 @@ body .idtoast span.idtx{font-size:12px}
         var tx = document.createElement('div');
         tx.className = 'idlimit-tx';
         var lt = document.createElement('b');
-        lt.textContent = 'AliExpress limit reached';
+        lt.textContent = 'Limit reached';
         var ls = document.createElement('span');
         ls.textContent = 'The real supplier price is not available right now. The link opens a search.';
         tx.appendChild(lt);
@@ -711,7 +711,7 @@ body .idtoast span.idtx{font-size:12px}
       } else {
         var ln2 = document.createElement('p');
         ln2.className = 'idpnote';
-        ln2.textContent = d.lookupNote;
+        ln2.textContent = String(d.lookupNote).replace(/AliExpress\s*/gi, '');
         box.appendChild(ln2);
       }
     }
