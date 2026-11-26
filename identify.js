@@ -330,6 +330,7 @@ async function identify(id) {
         if (r.cost > 0) p.cost = round2(r.cost);
       } else if (r.status === 'none') notes.push('AliExpress has no close match for "' + p.product + '", so its link opens a search page.');
       else if (r.status === 'nokey') notes.push('AliExpress lookup is not set up (RAPIDAPI_KEY is missing), so links open a search page.');
+      else if (/429|quota|exceeded|limit/i.test(String(r.message || ''))) notes.push('AliExpress limit reached. Links open a search page.');
       else notes.push('AliExpress lookup failed (' + (r.message || 'error') + '), so links open a search page.');
     }
   }
