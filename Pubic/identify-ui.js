@@ -644,7 +644,7 @@ body .idtoast span.idtx{font-size:12px}
         var ln = document.createElement('p');
         ln.className = 'idpnote';
         ln.textContent = isLimitText(d.lookupNote)
-          ? 'AliExpress limit reached. Real prices are not available right now. Links open an AliExpress search.'
+          ? 'AliExpress limit reached. Real prices are not available right now. Links open a search.'
           : d.lookupNote;
         box.appendChild(ln);
       }
@@ -702,7 +702,7 @@ body .idtoast span.idtx{font-size:12px}
         var lt = document.createElement('b');
         lt.textContent = 'AliExpress limit reached';
         var ls = document.createElement('span');
-        ls.textContent = 'The real supplier price is not available right now. The link opens an AliExpress search.';
+        ls.textContent = 'The real supplier price is not available right now. The link opens a search.';
         tx.appendChild(lt);
         tx.appendChild(ls);
         lim.appendChild(ic);
