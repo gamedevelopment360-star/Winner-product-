@@ -206,12 +206,12 @@ async function analyse(q, hint) {
     if (ali.cost > 0) supplier.cost = round2(ali.cost);
     image = String(ali.image || '');
     if (image.indexOf('//') === 0) image = 'https:' + image;
-  } else if (ali && ali.status === 'nokey') notes.push('AliExpress lookup is not set up (RAPIDAPI_KEY is missing), so the supplier link opens a search page.');
-  else if (ali && ali.status === 'none') notes.push('No close match on AliExpress, so the supplier link opens a search page.');
+  } else if (ali && ali.status === 'nokey') notes.push('Price lookup is not set up (RAPIDAPI_KEY is missing), so the supplier link opens a search page.');
+  else if (ali && ali.status === 'none') notes.push('No close match found, so the supplier link opens a search page.');
   else if (ali && /429|quota|limit|exceeded/i.test(String(ali.message || ''))) {
     supplier.limited = true;
-    notes.push('AliExpress limit reached. The real supplier price is not available right now. Try again later.');
-  } else notes.push('AliExpress lookup failed' + (ali && ali.message ? ' (' + ali.message + ')' : '') + ', so the supplier link opens a search page.');
+    notes.push('Limit reached. The real supplier price is not available right now. Try again later.');
+  } else notes.push('Lookup failed' + (ali && ali.message ? ' (' + ali.message + ')' : '') + ', so the supplier link opens a search page.');
   let cost = supplier.cost;
 
   // YouTube numbers
@@ -226,7 +226,7 @@ async function analyse(q, hint) {
   let g = null;
   // AliExpress limit reached: no real price, so the AI gives no price, opinion or description at all
   const stopAI = !!supplier.limited && !(cost > 0);
-  if (stopAI) notes.push('The AI price, competition opinion and description are switched off until the AliExpress limit resets.');
+  if (stopAI) notes.push('The AI price, competition opinion and description are switched off until the limit resets.');
   else if (gKey) g = await gemini(aiPrompt(q, supplier.title, cost, m), gKey);
   else notes.push('GEMINI_API_KEY is not set, so price, competition and description use simple rules.');
   if (gKey && !g && !stopAI) notes.push('The AI did not answer, so price and competition use simple rules and there is no description.');

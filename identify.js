@@ -97,7 +97,7 @@ async function aliLookup(name) {
     if (!good.length) return { status: 'none' };
     return { status: 'ok', url: itemUrl(good[0].id), title: clean(good[0].title, 140), image: good[0].image || '', cost: good[0].cost };
   } catch (e) {
-    return { status: 'error', message: e && e.name === 'AbortError' ? 'AliExpress did not answer in time' : 'could not reach AliExpress' };
+    return { status: 'error', message: e && e.name === 'AbortError' ? 'The supplier did not answer in time' : 'could not reach the supplier' };
   } finally { clearTimeout(timer); }
 }
 
@@ -328,10 +328,10 @@ async function identify(id) {
         p.aliUrl = r.url;
         p.direct = true;
         if (r.cost > 0) p.cost = round2(r.cost);
-      } else if (r.status === 'none') notes.push('AliExpress has no close match for "' + p.product + '", so its link opens a search page.');
-      else if (r.status === 'nokey') notes.push('AliExpress lookup is not set up (RAPIDAPI_KEY is missing), so links open a search page.');
-      else if (/429|quota|exceeded|limit/i.test(String(r.message || ''))) notes.push('AliExpress limit reached. Links open a search.');
-      else notes.push('AliExpress lookup failed (' + (r.message || 'error') + '), so links open a search page.');
+      } else if (r.status === 'none') notes.push('No close match for "' + p.product + '", so its link opens a search page.');
+      else if (r.status === 'nokey') notes.push('Price lookup is not set up (RAPIDAPI_KEY is missing), so links open a search page.');
+      else if (/429|quota|exceeded|limit/i.test(String(r.message || ''))) notes.push('Limit reached. Links open a search.');
+      else notes.push('Lookup failed (' + (r.message || 'error') + '), so links open a search page.');
     }
   }
   await Promise.all([worker(), worker(), worker()]);
