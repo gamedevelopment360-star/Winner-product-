@@ -58,7 +58,7 @@ footer a:hover{color:var(--text)}
 
 <header><div class="wrap">
  <a class="logo" href="#top">Winner <i>Finder</i></a>
- <nav><a class="h" href="#features">Features</a><a class="h" href="#pricing">Pricing</a><a class="h" href="#why">Why us</a><a class="btn" id="openApp" style="padding:8px 14px;margin-left:16px;color:#06210f" href="/login.html">Open app</a><a class="who" id="who" href="/app" hidden><span class="av" id="av"></span><span class="nm" id="nm"></span></a></nav>
+ <nav><a class="h" href="#features">Features</a><a class="h" href="#pricing">Pricing</a><a class="h" href="#why">Why us</a><a class="btn" id="openApp" style="padding:8px 14px;margin-left:16px;color:#06210f" href="/login.html" hidden>Open app</a><a class="who" id="who" href="/app" hidden><span class="av" id="av"></span><span class="nm" id="nm"></span></a></nav>
 </div></header>
 
 <section class="hero" id="top"><div class="wrap">
@@ -175,21 +175,27 @@ footer a:hover{color:var(--text)}
 </div></footer>
 
 <script>
-// When someone is signed in, show their name at the top.
-fetch('/api/auth/me').then(function (r) { return r.ok ? r.json() : {}; }).then(function (j) {
-  if (!j || !j.loggedIn) return;
-  var name = String(j.name || j.email || '').trim() || 'Account';
-  document.getElementById('av').textContent = name.charAt(0).toUpperCase();
-  document.getElementById('nm').textContent = name;
-  document.getElementById('who').hidden = false;
-  document.getElementById('openApp').hidden = true;
-  var out = document.getElementById('logout');
-  out.hidden = false;
-  out.addEventListener('click', function (e) {
-    e.preventDefault();
-    fetch('/api/auth/logout', { method: 'POST' }).finally(function () { location.reload(); });
-  });
-}).catch(function () {});
+// The top-right spot stays empty until we know who is here, then shows their name or the Open app button.
+(function () {
+  var done = false;
+  function finish(j) {
+    if (done) return;
+    done = true;
+    if (!j || !j.loggedIn) { document.getElementById('openApp').hidden = false; return; }
+    var name = String(j.name || j.email || '').trim() || 'Account';
+    document.getElementById('av').textContent = name.charAt(0).toUpperCase();
+    document.getElementById('nm').textContent = name;
+    document.getElementById('who').hidden = false;
+    var out = document.getElementById('logout');
+    out.hidden = false;
+    out.addEventListener('click', function (e) {
+      e.preventDefault();
+      fetch('/api/auth/logout', { method: 'POST' }).finally(function () { location.reload(); });
+    });
+  }
+  setTimeout(function () { finish(null); }, 8000); // if the check is very slow, show the Open app button
+  fetch('/api/auth/me').then(function (r) { return r.ok ? r.json() : {}; }).then(finish).catch(function () { finish(null); });
+})();
 </script>
 </body>
 </html>
